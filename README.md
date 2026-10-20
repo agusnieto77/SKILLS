@@ -1,5 +1,7 @@
 # SKILLS
 
+[![tests](https://github.com/agusnieto77/SKILLS/actions/workflows/tests.yml/badge.svg)](https://github.com/agusnieto77/SKILLS/actions/workflows/tests.yml)
+
 Agent skills (Claude Code and compatible agents) for academic work.
 
 | Skill | What it does |
