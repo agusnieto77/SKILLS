@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets and local configuration
+.env
+.env.*
+*.key
+
+# Local scratch, caches and test outputs (manuscripts, renders, reports)
+.zcit-scratch/
+.zapa-scratch/
+*.local.json
+salidas-skill/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
