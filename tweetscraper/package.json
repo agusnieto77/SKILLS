@@ -1,0 +1,24 @@
+{
+  "name": "tweetscraper-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent skill tools to collect and analyze X/Twitter data (port of the TweetScraperR R package to Node.js)",
+  "type": "module",
+  "bin": {
+    "tweetscraper": "scripts/tweetscraper.mjs"
+  },
+  "scripts": {
+    "postinstall": "playwright install chromium",
+    "test": "node --test \"tests/*.test.mjs\""
+  },
+  "dependencies": {
+    "playwright": "^1.49.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "stopwords-iso": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "Apache-2.0"
+}

@@ -32,3 +32,20 @@ jobs:
       - name: zotero-citations
         working-directory: zotero-citations
         run: python -m unittest discover -s tests -v
+
+  test-node:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22", "24"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: tweetscraper
+        working-directory: tweetscraper
+        # --ignore-scripts skips the Chromium download: the tests never launch a browser.
+        run: npm ci --ignore-scripts && npm test
