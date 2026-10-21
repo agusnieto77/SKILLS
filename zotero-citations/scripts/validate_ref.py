@@ -4,6 +4,10 @@
   doi DOI      [--title T --author A --year Y]   Crossref/DataCite (by registration agency) + OpenAlex
   isbn ISBN    [--title T --author A --year Y]   Open Library + Library of Congress/WorldCat (Citoid) + Google Books
   pmid PMID    [--title T --author A --year Y]   PubMed + Crossref when PubMed lists a DOI
+  work --title T [--author A] [--year Y] [--url URL] [--sources S1,S2]
+                                                 works without identifier: library catalogs (Open Library,
+                                                 Library of Congress, BNE), LA Referencia, institutional
+                                                 repositories (DSpace), Crossref, OpenAlex, the record page (Citoid)
   search --title T [--author A] [--year Y]       Crossref + OpenAlex candidates (leads only, never validation)
   payload IDENTIFIER                             Zotero JSON for a DOI/ISBN/PMID/URL (Citoid), schema-checked
   integrity [--dois D1,D2] [--from JSON...]      retractions, expressions of concern, corrections (batched)
@@ -13,19 +17,23 @@ single-source (only one source answered: needs a second, e.g. publisher site),
 conflict (sources disagree with each other), mismatch (sources agree, manuscript
 differs: show the diff), not-found.
 
-Optional env: CROSSREF_MAILTO (polite pool), OPENALEX_API_KEY, GOOGLE_BOOKS_API_KEY.
+Optional env: CROSSREF_MAILTO (polite pool), OPENALEX_API_KEY, GOOGLE_BOOKS_API_KEY,
+ZOTERO_CITATIONS_DSPACE (extra repositories: "name=d7:https://host,name2=os:https://host").
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import urllib.parse
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from zotlib import (  # noqa: E402
-    emit, env, fail, get_json, isbns_in, normalize_doi, normalize_isbn, request, surname_match,
+    emit, env, fail, get_json, isbns_in, main_title, normalize_doi, normalize_isbn, request, surname_match,
     title_similarity, year_of,
 )
 
@@ -210,6 +218,279 @@ def pubmed(pmid: str) -> dict | None:
         volume=entry.get("volume"), issue=entry.get("issue"), pages=entry.get("pages"), type="journal-article",
         doi=normalize_doi(doi),
     )
+
+# --------------------------------------------------------------------------- works without identifier
+
+CATALOG_RETRIES = 1  # catalogs and repositories: fail fast and report `unavailable`
+# Institutional repositories, verified 2026-10: `d7:` DSpace 7 REST, `os:` DSpace <= 6 OpenSearch.
+REPOSITORIES = {
+    "conicet": "os:https://ri.conicet.gov.ar",
+    "ridaa-unq": "os:https://ridaa.unq.edu.ar",
+    "filo-uba": "d7:https://repositorio.filo.uba.ar",
+    "unne": "d7:https://repositorio.unne.edu.ar",
+    "rdu-unc": "d7:https://rdu.unc.edu.ar",
+    "rephip-unr": "d7:https://rephip.unr.edu.ar",
+}
+MODS = "{http://www.loc.gov/mods/v3}"
+DC = "{http://purl.org/dc/elements/1.1/}"
+ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def repositories() -> dict[str, str]:
+    repos = dict(REPOSITORIES)
+    for spec in filter(None, (env("ZOTERO_CITATIONS_DSPACE") or "").split(",")):
+        name, _, target = spec.strip().partition("=")
+        if not re.match(r"(d7|os):https?://", target):
+            fail(f"ZOTERO_CITATIONS_DSPACE entry {spec!r} must look like name=d7:https://host or name=os:https://host")
+        repos[name] = target.rstrip("/")
+    return repos
+
+
+def independence_group(source: str) -> str:
+    """Sources fed by the same records count once.
+
+    LA Referencia harvests the national repository networks (Argentina's SNRD among
+    them), so it and any institutional repository are one group; a record page read
+    through Citoid is its own group unless it belongs to one of those repositories.
+    """
+    if source == "lareferencia" or source.startswith("repo:"):
+        return "repositorios"
+    if source.startswith("sitio:"):
+        host = source[len("sitio:"):]
+        repo_hosts = {urllib.parse.urlparse(spec[3:]).hostname for spec in repositories().values()}
+        if host in repo_hosts or host.endswith(("hdl.handle.net", "lareferencia.info")):
+            return "repositorios"
+    return source
+
+
+def _cql(text: str) -> str:
+    return re.sub(r'["\\]', " ", text).strip()
+
+
+def _solr(text: str) -> str:
+    """Free-text query for Solr-backed search (DSpace, VuFind): `:`, quotes, brackets are syntax there."""
+    return re.sub(r"\s+", " ", re.sub(r'[:"()\[\]{}^~*?\\/+!&|-]', " ", text)).strip()
+
+
+def crossref_search(title: str, author: str | None, year: str | None) -> list[dict]:
+    params = {"query.bibliographic": " ".join(p for p in (title, year) if p), "rows": 5,
+              "select": "DOI,title,author,issued,published-print,published-online,container-title,type,publisher,page,volume,issue,ISBN,URL",
+              "mailto": env("CROSSREF_MAILTO")}
+    if author:
+        params["query.author"] = author
+    data = get_json("https://api.crossref.org/works", params=params, headers=_ua_headers(), timeout=TIMEOUT)
+    return [_from_crossref(m) for m in ((data or {}).get("message") or {}).get("items", [])]
+
+
+def openalex_search(title: str, author: str | None, year: str | None) -> list[dict]:
+    key = env("OPENALEX_API_KEY")
+    data = get_json("https://api.openalex.org/works", timeout=TIMEOUT,
+                    params={"search": title, "per_page": 5, **({"api_key": key} if key else {})})
+    return [_from_openalex(w) for w in (data or {}).get("results", [])]
+
+
+def openlibrary_search(title: str, author: str | None, year: str | None) -> list[dict]:
+    data = get_json("https://openlibrary.org/search.json", timeout=TIMEOUT, retries=CATALOG_RETRIES, params={
+        "title": title, "author": author, "limit": 5,
+        "fields": "title,subtitle,author_name,first_publish_year,publish_year,publisher,isbn,key"})
+    records = []
+    for doc in (data or {}).get("docs", []):
+        years = {str(y) for y in doc.get("publish_year") or []}
+        records.append(_record(
+            "openlibrary", title=": ".join(p for p in (doc.get("title"), doc.get("subtitle")) if p),
+            authors=[_family(a) for a in doc.get("author_name", [])], full_names=doc.get("author_name"),
+            # A work groups every edition: report the cited edition's year when it exists.
+            year=year_of(year) if year_of(year) in years else str(doc.get("first_publish_year") or "") or None,
+            publisher=", ".join((doc.get("publisher") or [])[:2]), type="book",
+            isbn=sorted(isbns_in(" ".join((doc.get("isbn") or [])[:10]))),
+            url=f"https://openlibrary.org{doc['key']}" if doc.get("key") else None))
+    return records
+
+
+def _sru(url: str, query: str) -> ET.Element | None:
+    resp = request("GET", url, timeout=TIMEOUT, retries=CATALOG_RETRIES, params={
+        "version": "1.2" if "bne" in url else "1.1", "operation": "searchRetrieve", "query": query,
+        "maximumRecords": 5, "recordSchema": "dc" if "bne" in url else "mods"})
+    if resp.status != 200:
+        return None
+    try:
+        return ET.fromstring(resp.body)
+    except ET.ParseError:
+        return None
+
+
+def loc_search(title: str, author: str | None, year: str | None) -> list[dict]:
+    """Library of Congress catalog, SRU (MODS). Only plain http on port 210 answers."""
+    query = f'bath.title="{_cql(main_title(title))}"' + (f' and bath.author="{_cql(author)}"' if author else "")
+    root = _sru("http://lx2.loc.gov:210/lcdb", query)
+    records = []
+    for mods in (root.iter(MODS + "mods") if root is not None else []):
+        info = next((t for t in mods.findall(MODS + "titleInfo") if not t.get("type")), None)
+        title_parts = [info.findtext(MODS + "title"), info.findtext(MODS + "subTitle")] if info is not None else []
+        names = [n for n in mods.findall(MODS + "name") if n.get("type") == "personal"
+                 and (n.get("usage") == "primary" or "author" in (n.findtext(f"{MODS}role/{MODS}roleTerm") or ""))]
+        people = [(n.findtext(MODS + "namePart") or "").strip(" ,.") for n in names]
+        lccn = next((i.text for i in mods.findall(MODS + "identifier") if i.get("type") == "lccn"), None)
+        origin = mods.findall(MODS + "originInfo")
+        records.append(_record(
+            "loc", title=": ".join(p.strip(" /:") for p in title_parts if p),
+            authors=[_family(p) for p in people], full_names=people,
+            year=next((year_of(d.text) for o in origin for d in o.findall(MODS + "dateIssued") if year_of(d.text)), None),
+            publisher=next((a.findtext(MODS + "namePart") for o in origin for a in o.findall(MODS + "agent")), None)
+            or next((p.text for o in origin for p in o.findall(MODS + "publisher")), None),
+            type="book", isbn=sorted(isbns_in(" ".join(i.text or "" for i in mods.findall(MODS + "identifier")
+                                                      if i.get("type") == "isbn"))),
+            url=f"https://lccn.loc.gov/{lccn.strip()}" if lccn else None))
+    return records
+
+
+def bne_search(title: str, author: str | None, year: str | None) -> list[dict]:
+    """Biblioteca Nacional de España, SRU (Alma, Dublin Core)."""
+    query = f'alma.title="{_cql(main_title(title))}"' + (f' AND alma.creator="{_cql(author)}"' if author else "")
+    root = _sru("https://catalogo.bne.es/view/sru/34BNE_INST", query)
+    records = []
+    for dc in (root.iter("{info:srw/schema/1/dc-schema}dc") if root is not None else []):
+        people = [c.text for c in dc.findall(DC + "creator") + dc.findall(DC + "contributor") if c.text]
+        identifiers = [i.text or "" for i in dc.findall(DC + "identifier")]
+        records.append(_record(
+            "bne", title=re.sub(r"\s*\[[^\]]*\]\s*", " ", dc.findtext(DC + "title") or "").strip(" /:"),
+            authors=[_family(re.sub(r"\s*\(?\d{4}-?(\d{4})?\)?\.?$", "", p)) for p in people], full_names=people,
+            year=next((year_of(d.text) for d in dc.findall(DC + "date") if year_of(d.text)), None),
+            publisher=", ".join(p.text for p in dc.findall(DC + "publisher") if p.text), type="book",
+            isbn=sorted(isbns_in(" ".join(identifiers))),
+            catalog_id=next((i for i in identifiers if i.startswith("alma:")), None)))
+    return records
+
+
+def lareferencia_search(title: str, author: str | None, year: str | None) -> list[dict]:
+    """LA Referencia: Latin American repository network (theses, articles, reports)."""
+    query = urllib.parse.urlencode([("lookfor", _solr(title)), ("type", "Title"), ("limit", 5)] + [
+        ("field[]", f) for f in ("id", "title", "authors", "publicationDates", "formats", "institutions", "urls")])
+    data = get_json(f"https://www.lareferencia.info/vufind/api/v1/search?{query}", timeout=TIMEOUT,
+                    retries=CATALOG_RETRIES)
+    records = []
+    for r in (data or {}).get("records", []):
+        people = list(((r.get("authors") or {}).get("primary") or {}).keys())
+        records.append(_record(
+            "lareferencia", title=r.get("title"), authors=[_family(p) for p in people], full_names=people,
+            year=year_of((r.get("publicationDates") or [None])[0]), type=", ".join(r.get("formats") or []),
+            publisher=", ".join(r.get("institutions") or []),
+            url=((r.get("urls") or [{}])[0]).get("url") or f"https://www.lareferencia.info/vufind/Record/{r.get('id')}"))
+    return records
+
+
+def dspace_search(name: str, spec: str, title: str) -> list[dict]:
+    kind, base = spec.split(":", 1)
+    if kind == "d7":
+        data = get_json(f"{base}/server/api/discover/search/objects", timeout=TIMEOUT, retries=CATALOG_RETRIES,
+                        params={"query": _solr(title), "size": 5, "dsoType": "ITEM"})
+        objects = (((data or {}).get("_embedded") or {}).get("searchResult") or {}).get("_embedded", {}).get("objects", [])
+        records = []
+        for obj in objects:
+            item = (obj.get("_embedded") or {}).get("indexableObject") or {}
+            meta = item.get("metadata") or {}
+
+            def values(field, meta=meta):
+                return [v.get("value") for v in meta.get(field, []) if v.get("value")]
+
+            people = values("dc.contributor.author") or values("dc.creator")
+            records.append(_record(
+                f"repo:{name}", title=item.get("name") or (values("dc.title") or [None])[0],
+                authors=[_family(p) for p in people], full_names=people, year=year_of((values("dc.date.issued") or [None])[0]),
+                publisher=", ".join(values("dc.publisher")), type=", ".join(values("dc.type")),
+                url=f"{base}/handle/{item['handle']}" if item.get("handle") else None))
+        return records
+    resp = request("GET", f"{base}/open-search/discover", timeout=TIMEOUT, retries=CATALOG_RETRIES,
+                   params={"query": _solr(title), "rpp": 5, "format": "atom"})
+    if resp.status != 200:
+        return []
+    try:
+        feed = ET.fromstring(resp.body)
+    except ET.ParseError:
+        return []
+    records = []
+    for entry in feed.iter(ATOM + "entry"):
+        people = [n.text for n in entry.iter(ATOM + "name") if n.text]
+        link = entry.find(ATOM + "link")
+        records.append(_record(
+            f"repo:{name}", title=entry.findtext(ATOM + "title"), authors=[_family(p) for p in people], full_names=people,
+            year=year_of(entry.findtext(ATOM + "published") or entry.findtext(DC + "date")),
+            url=link.get("href") if link is not None else entry.findtext(ATOM + "id")))
+    return records
+
+
+def citoid_url(url: str) -> list[dict]:
+    """The record's own page (journal, repository, catalog) read through Zotero translators."""
+    items = citoid(url)
+    if not items:
+        return []
+    item = items[0]
+    return [_record(
+        f"sitio:{urllib.parse.urlparse(url).hostname}", title=item.get("title"),
+        authors=[c.get("lastName") or c.get("name") for c in item.get("creators", []) if c.get("creatorType") == "author"]
+        or [c.get("lastName") or c.get("name") for c in item.get("creators", [])],
+        year=year_of(item.get("date")), container=item.get("publicationTitle") or item.get("bookTitle"),
+        volume=item.get("volume"), issue=item.get("issue"), pages=item.get("pages"),
+        publisher=item.get("publisher") or item.get("university"), type=item.get("itemType"),
+        doi=normalize_doi(item.get("DOI")), isbn=sorted(isbns_in(item.get("ISBN"))), url=item.get("url") or url)]
+
+
+def work_sources() -> dict:
+    sources = {"crossref": crossref_search, "openalex": openalex_search, "openlibrary": openlibrary_search,
+               "loc": loc_search, "bne": bne_search, "lareferencia": lareferencia_search}
+    for name, spec in repositories().items():
+        sources[f"repo:{name}"] = lambda title, author, year, name=name, spec=spec: dspace_search(name, spec, title)
+    return sources
+
+
+def _score(candidate: dict, title: str, author: str | None, year: str | None) -> dict:
+    t = title_similarity(title, candidate["title"])
+    a = surname_match(author, (candidate["authors"] or [None])[0]) if author and candidate["authors"] else None
+    y = 1.0 if not year or year_of(year) in {candidate["year"], candidate.get("online_year")} else 0.0
+    candidate["score"] = round(0.6 * t + 0.25 * (0.5 if a is None else a) + 0.15 * y, 3)
+    candidate["qualifies"] = t >= 0.9 and (a is None or a >= 0.7)
+    return candidate
+
+
+def validate_work(title: str, author: str | None, year: str | None, url: str | None = None,
+                  only: list[str] | None = None) -> dict:
+    """Works without DOI/ISBN: query catalogs and repositories, keep the best match per independence group."""
+    sources = work_sources()
+    if only:
+        unknown = [s for s in only if s not in sources and f"repo:{s}" not in sources and s != "repos"]
+        if unknown:
+            fail(f"Unknown sources {unknown}; valid: {sorted(sources)} or 'repos'")
+        wanted = {s if s in sources else f"repo:{s}" for s in only if s != "repos"}
+        if "repos" in only:
+            wanted |= {s for s in sources if s.startswith("repo:")}
+        sources = {k: v for k, v in sources.items() if k in wanted}
+    jobs = {name: (fn, (title, author, year)) for name, fn in sources.items()}
+    if url:
+        jobs[f"sitio:{urllib.parse.urlparse(url).hostname}"] = (lambda u, *_: citoid_url(u), (url,))
+    errors, candidates = [], []
+
+    def run(item):
+        name, (fn, args) = item
+        try:
+            return name, fn(*args), None
+        except (ConnectionError, ValueError, ET.ParseError) as err:
+            return name, [], f"{name}: {err}"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for _, found, error in pool.map(run, jobs.items()):
+            if error:
+                errors.append(error)
+            candidates += [_score(c, title, author, year) for c in found if c.get("title")]
+    best: dict[str, dict] = {}
+    for c in sorted((c for c in candidates if c["qualifies"]), key=lambda c: -c["score"]):
+        best.setdefault(independence_group(c["source"]), c)
+    chosen = sorted(best.values(), key=lambda c: -c["score"])
+    leads = sorted((c for c in candidates if c not in chosen and c["score"] >= 0.5), key=lambda c: -c["score"])[:5]
+    expected = {"title": title, "author": author, "year": year}
+    return {"searched": sorted(jobs), "groups": {independence_group(c["source"]): c["source"] for c in chosen},
+            **verdict(chosen, expected, errors), "leads": leads,
+            "note": "Each group counts once (LA Referencia + institutional repositories = one). Report the record URLs."}
+
 
 
 # --------------------------------------------------------------------------- agreement
@@ -408,28 +689,14 @@ def validate_pmid(pmid: str, expected: dict) -> dict:
 
 def search(title: str, author: str | None, year: str | None) -> dict:
     errors, candidates = [], []
-    params = {"query.bibliographic": " ".join(p for p in (title, year) if p), "rows": 5,
-              "select": "DOI,title,author,issued,published-print,published-online,container-title,type,publisher,page,volume,issue,ISBN,URL",
-              "mailto": env("CROSSREF_MAILTO")}
-    if author:
-        params["query.author"] = author
-    try:
-        data = get_json("https://api.crossref.org/works", params=params, headers=_ua_headers(), timeout=TIMEOUT)
-        candidates += [_from_crossref(m) for m in ((data or {}).get("message") or {}).get("items", [])]
-    except ConnectionError as err:
-        errors.append(f"crossref: {err}")
-    key = env("OPENALEX_API_KEY")
-    try:
-        data = get_json("https://api.openalex.org/works", timeout=TIMEOUT,
-                        params={"search": title, "per_page": 5, **({"api_key": key} if key else {})})
-        candidates += [_from_openalex(w) for w in (data or {}).get("results", [])]
-    except ConnectionError as err:
-        errors.append(f"openalex: {err}")
+    for name, fn in (("crossref", crossref_search), ("openalex", openalex_search)):
+        try:
+            candidates += fn(title, author, year)
+        except ConnectionError as err:
+            errors.append(f"{name}: {err}")
     for c in candidates:
-        t = title_similarity(title, c["title"])
-        a = surname_match(author, (c["authors"] or [None])[0]) if author and c["authors"] else 0.5
-        y = 1.0 if not year or year_of(year) in {c["year"], c.get("online_year")} else 0.0
-        c["score"] = round(0.6 * t + 0.25 * a + 0.15 * y, 3)
+        _score(c, title, author, year)
+        c.pop("qualifies")
     candidates.sort(key=lambda c: -c["score"])
     return {"note": "Search hits are leads: confirm the chosen one with `doi`/`isbn` before creating anything.",
             "unavailable": errors, "candidates": candidates[:6]}
@@ -460,6 +727,10 @@ def main() -> None:
         p.add_argument("--title"), p.add_argument("--author"), p.add_argument("--year")
     p = sub.add_parser("search")
     p.add_argument("--title", required=True), p.add_argument("--author"), p.add_argument("--year")
+    p = sub.add_parser("work", help="works without DOI/ISBN: catalogs, repositories, record page")
+    p.add_argument("--title", required=True), p.add_argument("--author"), p.add_argument("--year")
+    p.add_argument("--url", help="landing page of the record (journal, repository, catalog), read via Citoid")
+    p.add_argument("--sources", help="comma-separated subset, e.g. loc,bne,lareferencia,repos,conicet")
     p = sub.add_parser("payload")
     p.add_argument("identifier")
     p = sub.add_parser("integrity")
@@ -468,6 +739,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "search":
         emit(search(args.title, args.author, args.year))
+        return
+    if args.command == "work":
+        only = [s.strip() for s in args.sources.split(",") if s.strip()] if args.sources else None
+        emit(validate_work(args.title, args.author, args.year, args.url, only))
         return
     if args.command == "payload":
         emit(payload(args.identifier))

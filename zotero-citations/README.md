@@ -5,8 +5,9 @@ Skill para agentes (Claude Code y compatibles) que audita y normaliza las citas 
 - **Normas**: APA 7 y Chicago 18.ª (notas y bibliografía, o autor-fecha) por defecto; cualquier estilo del repositorio de Zotero (10 800+); o un formato a medida reconstruido a partir de un ejemplo del usuario.
 - **Auditoría**: citas huérfanas y no citadas, "et al.", años, sufijos a/b, ibid., notas completas y abreviadas, reglas de formato de cada norma.
 - **Zotero**: coteja la lista con la biblioteca, crea y corrige ítems con dry-run y control de versiones.
-- **Validación**: Crossref, DataCite, OpenAlex, Open Library, catálogos de bibliotecas, PubMed; retractaciones (Retraction Watch vía Crossref, OpenAlex).
+- **Validación**: Crossref, DataCite, OpenAlex, Open Library, Library of Congress, Biblioteca Nacional de España, LA Referencia y repositorios institucionales (CONICET, UBA, UNNE, UNC, UNR, UNQ), fichas de SciELO u otros sitios vía Citoid, PubMed; catálogo manual para BNMM, BCN, Redalyc y otros; retractaciones (Retraction Watch vía Crossref, OpenAlex).
 - **Fidelidad**: verifica citas textuales, páginas y copia sin comillas contra el texto completo que Zotero indexó de los PDF.
+- **Control de cambios**: el manuscrito corregido se entrega como copia del `.docx` con cada corrección como revisión de Word y las dudas como comentarios; el autor acepta o rechaza.
 
 El agente lee `SKILL.md`; este README es para quien instala y mantiene la skill.
 
@@ -42,6 +43,7 @@ python scripts/zotero_client.py match audit.json > match.json
 python scripts/validate_ref.py integrity --from audit.json match.json
 python scripts/source_check.py check audit.json match.json > check.json
 python scripts/cite_format.py render --keys KEY1,KEY2 --style chicago-notes --locators KEY1:61
+python scripts/docx_revise.py apply manuscrito.docx edits.json --out manuscrito_revisado.docx --author "Nombre"
 ```
 
 Formato de una revista o de un ejemplo:
@@ -58,7 +60,7 @@ Referencia completa de comandos y salidas: `references/scripts.md`.
 
 ```
 SKILL.md                 contrato para el agente
-scripts/                 cite_audit, zotero_client, validate_ref, source_check, cite_format (+ módulos internos)
+scripts/                 cite_audit, zotero_client, validate_ref, source_check, cite_format, docx_revise (+ módulos internos)
 references/              scripts, apa, chicago, custom-formats, zotero-api, validation-sources, archival-sources, report-template
 tests/                   unittest sin red (servidor Zotero simulado, manuscritos de prueba)
 ```
@@ -75,4 +77,4 @@ python -m unittest discover -s tests
 - La extracción de citas usa patrones: revisá los casos marcados antes de reportarlos (p. ej. un paréntesis de prosa con lugar y año en autor-fecha).
 - Las retractaciones solo se pueden revisar en obras con DOI.
 - La fidelidad depende de que el PDF esté adjunto, indexado y con OCR.
-- La reescritura final del `.docx` la hace el agente con la skill `docx`; no hay un script que la garantice.
+- Control de cambios (`docx_revise.py`): no edita párrafos con revisiones pendientes de otra persona, campos vivos de Zotero ni cuadros de texto; no crea llamadas de nota nuevas; los comentarios se anclan al párrafo entero.

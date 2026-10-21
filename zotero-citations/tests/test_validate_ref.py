@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -105,6 +106,98 @@ class Identifiers(unittest.TestCase):
     def test_family_name_parsing(self):
         self.assertEqual(vr._family("Julieta Quirós"), "Quirós")
         self.assertEqual(vr._family("Quirós, Julieta"), "Quirós")
+
+
+class FakeResponse:
+    def __init__(self, body: str, status: int = 200):
+        self.status, self.body = status, body.encode("utf-8")
+
+
+LOC_MODS = """<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:records><zs:record><zs:recordData>
+<mods xmlns="http://www.loc.gov/mods/v3"><titleInfo><title>Distant reading</title></titleInfo>
+<titleInfo type="uniform"><title>Essays. Selections</title></titleInfo>
+<name type="personal" usage="primary"><namePart>Moretti, Franco,</namePart><namePart type="date">1950-</namePart></name>
+<originInfo><dateIssued encoding="marc">2013</dateIssued></originInfo>
+<originInfo eventType="publication"><agent><namePart>Verso,</namePart></agent><dateIssued>2013.</dateIssued></originInfo>
+<identifier type="isbn">9781781680841</identifier><identifier type="lccn">2012047274</identifier></mods>
+</zs:recordData></zs:record></zs:records></zs:searchRetrieveResponse>"""
+BNE_DC = """<searchRetrieveResponse xmlns="http://www.loc.gov/zing/srw/"><records><record><recordData>
+<srw_dc:dc xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:srw_dc="info:srw/schema/1/dc-schema">
+<dc:title>Cien años de soledad [Texto impreso]</dc:title><dc:contributor>García Márquez, Gabriel 1927-2014</dc:contributor>
+<dc:publisher>Buenos Aires</dc:publisher><dc:publisher>Sudamericana</dc:publisher><dc:date>cop. 1967</dc:date>
+<dc:identifier>alma:34BNE_INST/bibs/991</dc:identifier></srw_dc:dc></recordData></record></records></searchRetrieveResponse>"""
+DSPACE7 = {"_embedded": {"searchResult": {"_embedded": {"objects": [{"_embedded": {"indexableObject": {
+    "name": "Trabajadores de salud en conflicto : las protestas en el área de salud pública de Chaco entre 2017 y 2021",
+    "handle": "123456789/53956", "metadata": {
+        "dc.contributor.author": [{"value": "Sujatt, Julio Andrés"}], "dc.date.issued": [{"value": "2023-05-18"}],
+        "dc.type": [{"value": "Ponencia"}]}}}}]}}}}
+LAREFERENCIA = {"records": [{"title": "Trabajadores de salud en conflicto: las protestas en el área de salud pública de Chaco",
+                             "authors": {"primary": {"Sujatt, Julio Andrés": {"role": ["author"]}}},
+                             "publicationDates": ["2023"], "institutions": ["Universidad Nacional del Nordeste"],
+                             "urls": [{"url": "http://repositorio.unne.edu.ar/handle/123456789/53956"}], "id": "AR_1"}]}
+
+
+class CatalogParsing(unittest.TestCase):
+    def test_library_of_congress_mods(self):
+        with mock.patch.object(vr, "request", return_value=FakeResponse(LOC_MODS)):
+            [r] = vr.loc_search("Distant reading", "Moretti", "2013")
+        self.assertEqual((r["title"], r["authors"], r["year"], r["publisher"]), ("Distant reading", ["Moretti"], "2013", "Verso,"))
+        self.assertEqual((r["isbn"], r["url"]), (["9781781680841"], "https://lccn.loc.gov/2012047274"))
+
+    def test_bne_dublin_core_strips_material_designation_and_dates(self):
+        with mock.patch.object(vr, "request", return_value=FakeResponse(BNE_DC)):
+            [r] = vr.bne_search("Cien años de soledad", "García Márquez", "1967")
+        self.assertEqual((r["title"], r["authors"], r["year"]), ("Cien años de soledad", ["García Márquez"], "1967"))
+        self.assertEqual(r["publisher"], "Buenos Aires, Sudamericana")
+
+    def test_dspace7_and_lareferencia(self):
+        with mock.patch.object(vr, "get_json", return_value=DSPACE7):
+            [repo] = vr.dspace_search("unne", "d7:https://repositorio.unne.edu.ar", "Trabajadores de salud")
+        self.assertEqual((repo["source"], repo["authors"], repo["year"]), ("repo:unne", ["Sujatt"], "2023"))
+        self.assertEqual(repo["url"], "https://repositorio.unne.edu.ar/handle/123456789/53956")
+        with mock.patch.object(vr, "get_json", return_value=LAREFERENCIA):
+            [lr] = vr.lareferencia_search("Trabajadores de salud", None, None)
+        self.assertEqual((lr["authors"], lr["year"], lr["publisher"]), (["Sujatt"], "2023", "Universidad Nacional del Nordeste"))
+
+    def test_solr_syntax_is_neutralized(self):
+        self.assertEqual(vr._solr('Trabajadores: "las protestas" (2017-2021)'), "Trabajadores las protestas 2017 2021")
+
+
+class WorkValidation(unittest.TestCase):
+    TITLE = "Trabajadores de salud en conflicto: las protestas en el área de salud pública de Chaco entre 2017 y 2021"
+
+    def run_work(self, results: dict, **kw):
+        sources = {name: (lambda *a, found=found: [dict(r) for r in found]) for name, found in results.items()}
+        with mock.patch.object(vr, "work_sources", return_value=sources):
+            return vr.validate_work(self.TITLE, "Sujatt", kw.get("year", "2023"))
+
+    def test_repository_and_lareferencia_are_one_source(self):
+        hit = {"title": self.TITLE, "authors": ["Sujatt"], "year": "2023"}
+        result = self.run_work({"repo:unne": [vr._record("repo:unne", **hit)],
+                                "lareferencia": [vr._record("lareferencia", **hit)], "loc": []})
+        self.assertEqual(result["verdict"], "single-source")
+        self.assertEqual(list(result["groups"]), ["repositorios"])
+
+    def test_two_independent_catalogs_validate_and_misses_become_leads(self):
+        hit = {"title": self.TITLE, "authors": ["Sujatt"], "year": "2023"}
+        other = vr._record("crossref", title="Trabajadores de la salud en la Argentina", authors=["Pérez"], year="2023")
+        result = self.run_work({"repo:unne": [vr._record("repo:unne", **hit)], "bne": [vr._record("bne", **hit)],
+                                "crossref": [other]})
+        self.assertEqual((result["verdict"], set(result["groups"])), ("validated", {"repositorios", "bne"}))
+        self.assertEqual([lead["source"] for lead in result["leads"]], ["crossref"])
+        self.assertEqual(self.run_work({"repo:unne": [vr._record("repo:unne", **hit)], "bne": [vr._record("bne", **hit)]},
+                                       year="2021")["verdict"], "mismatch")
+
+    def test_failing_source_is_unavailable_not_fatal(self):
+        def down(*_):
+            raise ConnectionError("timeout")
+        with mock.patch.object(vr, "work_sources", return_value={"loc": down}):
+            result = vr.validate_work(self.TITLE, "Sujatt", "2023")
+        self.assertEqual((result["verdict"], result["unavailable"]), ("not-found", ["loc: timeout"]))
+
+    def test_record_page_on_a_known_repository_joins_that_group(self):
+        self.assertEqual(vr.independence_group("sitio:repositorio.unne.edu.ar"), "repositorios")
+        self.assertEqual(vr.independence_group("sitio:www.scielo.org.ar"), "sitio:www.scielo.org.ar")
 
 
 if __name__ == "__main__":

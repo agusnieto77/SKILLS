@@ -9,6 +9,12 @@ Llená cada sección con los JSON de los scripts; no recalcules a mano. Seccione
 - Formato a medida (si aplica): estilo base o plantilla, preguntas hechas al usuario y sus respuestas
 - Fecha: <YYYY-MM-DD>
 - Biblioteca Zotero: <user|group> <ID> · Lectura: <local | web>
+- Manuscrito entregado: <archivo> · Control de cambios: activado · Autor de las revisiones: <--author>
+
+## Control de cambios
+- Inserciones I · Eliminaciones D · Cambios de cursiva F · Párrafos insertados / eliminados P / Q · Comentarios C (de `docx_revise.py summary`)
+- Ninguna revisión está aceptada: el autor revisa cada una en Word (Revisar → Aceptar / Rechazar). Rechazar todo devuelve el original.
+- Párrafos que no se pudieron revisar (revisiones pendientes, campos vivos de Zotero): <lista o "Sin casos">
 
 ## ⛔ Integridad de las fuentes
 | # | Referencia | DOI | Estado | Aviso (tipo, fecha, DOI del aviso) | Decisión del autor |
@@ -72,6 +78,7 @@ Llená cada sección con los JSON de los scripts; no recalcules a mano. Seccione
 ## Metadatos faltantes / [verificar]
 | # | Referencia | Campo faltante | Acción sugerida |
 |---|------------|----------------|-----------------|
+(En `.docx` van además como comentario de Word sobre la entrada.)
 
 ## Fuentes archivísticas
 | # | Referencia | Repositorio | Signatura | URL | Estado |

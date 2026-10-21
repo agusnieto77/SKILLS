@@ -82,7 +82,8 @@ def extract(path: Path, style: str = "auto") -> dict:
     detection = detect_style(body, doc["notes"], [r["text"] for r in ref_paras])
     name, how = resolve_style(style, detection)
     profile = PROFILES[name]
-    refs = [{**profile.parse_reference(r["text"]), "section": r["section"], "index": i} for i, r in enumerate(ref_paras)]
+    refs = [{**profile.parse_reference(r["text"]), "section": r["section"], "index": i, "paragraph": r["paragraph"]}
+            for i, r in enumerate(ref_paras)]
     inherit_dash_authors(refs)
     citations = profile.citations(body, doc["notes"])
     synthetic = False

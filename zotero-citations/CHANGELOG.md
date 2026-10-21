@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.2 — 2026-10-21
+
+Cambios surgidos de la revisión de un libro de 11 capítulos y 477 referencias (APA 7). Ese trabajo entregó un `.docx` reescrito sin control de cambios, y 396 entradas sin DOI quedaron sin poder validarse.
+
+- **Control de cambios obligatorio** (`docx_revise.py`, nuevo): las correcciones se aplican a una copia del `.docx` como revisiones de Word (inserción, eliminación, cambio de cursiva, párrafo insertado/eliminado) y comentarios, con autor y fecha, y "Control de cambios" activado. Nunca se acepta nada ni se toca el original. Valida todas las ediciones antes de escribir y comprueba que "Rechazar todo" devuelva el original. Rechaza párrafos con revisiones pendientes, campos vivos de Zotero y llamadas de nota nuevas. Probado con las 183 ediciones del libro: Word abre el archivo y lo verifica (315 revisiones; rechazar todo = original).
+- `docx_revise.py summary`: inventario de revisiones y comentarios para el reporte; el reporte suma la sección "Control de cambios".
+- `cite_audit`: las referencias traen `paragraph` y los índices de párrafo de las citas ya no se corren después de la bibliografía (apéndices, anexos). La lectura de `.docx` no mueve los espacios en los bordes de las cursivas.
+- **Validación sin identificador** (`validate_ref.py work`, nuevo): Open Library, Library of Congress (SRU), Biblioteca Nacional de España (SRU), LA Referencia, repositorios DSpace (CONICET Digital, RIDAA-UNQ, Filo:Digital UBA, UNNE, RDU-UNC, RepHipUNR; ampliable con `ZOTERO_CITATIONS_DSPACE`), Crossref, OpenAlex y la ficha de la obra vía Citoid (`--url`, p. ej. SciELO). Grupos de independencia: repositorios + LA Referencia cuentan como una fuente.
+- `validation-sources.md`: catálogo manual ampliado (BNMM con su catálogo Aleph y Z39.50, BCN, BDU-SIU, SNRD, SEDICI, Memoria Académica, CAICYT, AGN, SciELO, Redalyc, Latindex, CLACSO, Biblat, REBIUN, Dialnet, WorldCat, HathiTrust y otros), con modo de acceso y el procedimiento ficha → `work --url`.
+
 ## 3.1 — 2026-10-20
 
 Primera prueba con un manuscrito real (artículo en PDF, notas en formato hispano, sin bibliografía).

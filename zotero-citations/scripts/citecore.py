@@ -109,9 +109,16 @@ def _paragraph(p) -> dict:
             pieces[-1][0] += text
         else:
             pieces.append([text, italic])
-    text = "".join(f"*{t.strip()}*{' ' if t.endswith(' ') else ''}" if it and t.strip() else t for t, it in pieces)
+    text = "".join(_mark_italic(t) if it and t.strip() else t for t, it in pieces)
     style = p.find(f"{W}pPr/{W}pStyle")
     return {"text": text.strip(), "style": style.get(W + "val") if style is not None else None}
+
+
+def _mark_italic(text: str) -> str:
+    """`*...*` around the words; surrounding whitespace stays outside so the plain text is unchanged."""
+    core = text.strip()
+    start = text.index(core)
+    return f"{text[:start]}*{core}*{text[start + len(core):]}"
 
 
 def _zotero_fields(root) -> list[dict]:
@@ -453,27 +460,31 @@ def body_text(paragraph: dict) -> str:
 
 
 def split_sections(paragraphs: list[dict]) -> tuple[list[str], list[dict], str | None]:
-    """Return (body paragraphs, reference entries with sub-section, heading)."""
+    """Return (body paragraphs, reference entries with sub-section, heading).
+
+    Body keeps one slot per paragraph (the reference section left blank), so citation
+    `paragraph` indexes and reference `paragraph` indexes both point at the document.
+    """
     heads = [i for i, p in enumerate(paragraphs) if _is_heading_like(p) and REF_HEADING_RE.match(_heading_text(p))]
     if not heads:
         return [body_text(p) for p in paragraphs], [], None
     later = [i for i in heads if i >= len(paragraphs) * 0.4]
     start = later[0] if later else heads[-1]
     heading = _heading_text(paragraphs[start])
-    body = [body_text(p) for p in paragraphs[:start]]
+    body = [body_text(p) for p in paragraphs[:start]] + [""] * (len(paragraphs) - start)
     refs, section = [], heading
     for i in range(start + 1, len(paragraphs)):
         p = paragraphs[i]
         if _is_heading_like(p):
             title = _heading_text(p)
             if END_HEADING_RE.match(title):
-                body += [body_text(q) for q in paragraphs[i:]]
+                body[i:] = [body_text(q) for q in paragraphs[i:]]
                 break
             if REF_HEADING_RE.match(title) or not _looks_like_reference(p["text"]):
                 section = title
                 continue
         text = re.sub(r"^(?:[-*•]\s+|\d+[.)]\s+)", "", p["text"]).strip()
-        refs.append({"text": text, "section": section})
+        refs.append({"text": text, "section": section, "paragraph": i})
     return body, refs, heading
 
 

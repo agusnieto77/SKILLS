@@ -9,6 +9,7 @@ Python 3.10+ sin dependencias externas. Salida JSON por stdout; errores como `{"
 | `validate_ref.py` | Validación externa (DOI, ISBN, PMID) e integridad (retractaciones). |
 | `source_check.py` | Citas textuales, copia sin comillas y pasajes contra el texto completo en Zotero. |
 | `cite_format.py` | Referencias, citas y notas: APA, Chicago, cualquier estilo del repositorio o plantilla a medida. |
+| `docx_revise.py` | Entregar las correcciones del `.docx` como control de cambios de Word (revisiones y comentarios). |
 
 Módulos internos: `zotlib.py` (HTTP, normalización), `citecore.py` (lectura y cruce comunes), `style_apa.py` y `style_chicago.py` (reglas por norma).
 
@@ -27,6 +28,8 @@ python scripts/zotero_client.py create payload.json --audit-tags      # dry-run:
 python scripts/zotero_client.py create payload.json --audit-tags --confirm
 python scripts/zotero_client.py update ABCD2345 patch.json --version 812 [--confirm]
 python scripts/cite_format.py render --keys ABCD2345,EFGH6789 --style chicago-notes --locators ABCD2345:61 > render.json
+python scripts/docx_revise.py apply manuscrito.docx edits.json --out manuscrito_revisado.docx --author "Nombre"
+python scripts/docx_revise.py summary manuscrito_revisado.docx           # conteo de revisiones para el reporte
 ```
 
 Si el `.docx` tiene campos vivos de Zotero, `audit` devuelve sus `itemKey` en `summary.zotero_field_item_keys`: pasalos directo a `render`.
@@ -42,6 +45,7 @@ Si el `.docx` tiene campos vivos de Zotero, `audit` devuelve sus `itemKey` en `s
 | `OPENALEX_API_KEY` | Sin key OpenAlex da ~US$0,10/día de crédito: ~100 búsquedas; los lookups por DOI son gratis. |
 | `GOOGLE_BOOKS_API_KEY` | La cuota anónima de Google Books suele estar agotada; sin key queda como `unavailable`. |
 | `ZOTERO_CITATIONS_CACHE` | Carpeta de caché (schema de Zotero e índice de estilos: 7 días; snapshot de la biblioteca por versión). |
+| `ZOTERO_CITATIONS_DSPACE` | Repositorios DSpace extra para `work`: `nombre=d7:https://host,otro=os:https://host` (`d7` = DSpace 7 REST, `os` = OpenSearch). |
 
 En Windows, si la consola se abrió antes de un `setx`, los scripts leen igual las variables del registro de usuario.
 
@@ -60,9 +64,9 @@ En Windows, si la consola se abrió antes de un `setx`, los scripts leen igual l
 
 **Detección** (`style_detection`): cuenta citas con coma `(Acha, 2015)` → APA, sin coma `(Acha 2015)` → Chicago autor-fecha, notas con título de obra o *ibid.* → Chicago notas, y la forma de cada entrada de la lista (vale doble). `confidence` < 0,7: confirmá con el usuario. `style_source`: `requested`, `detected` o `default`.
 
-**Referencias**: `parsed`, `shape` (`apa`, `author-date`, `notes`, `unknown`: en qué sistema está escrita la entrada), `authors` (apellidos), `corporate`, `title`, `year`, `etal`, `doi`, `isbn`, `url`, `kind`. `references_from_notes: true` cuando no hay bibliografía y las referencias salen de las notas completas (`synthetic`).
+**Referencias**: `parsed`, `shape` (`apa`, `author-date`, `notes`, `unknown`: en qué sistema está escrita la entrada), `authors` (apellidos), `corporate`, `title`, `year`, `etal`, `doi`, `isbn`, `url`, `kind`, `paragraph` (párrafo del documento: destino de `docx_revise.py`). `references_from_notes: true` cuando no hay bibliografía y las referencias salen de las notas completas (`synthetic`, sin `paragraph`).
 
-**Citas**: `kind` (`parenthetical`, `narrative`, `note-full`, `note-short`, `note-ibid`, `note-author`), `authors`, `etal`, `years`, `title` (notas), `locator`, `note` (id de la nota), `context` (la oración del cuerpo), `ref_indexes`, `quotes` (citas textuales con `text`, `block`, `locator`).
+**Citas**: `kind` (`parenthetical`, `narrative`, `note-full`, `note-short`, `note-ibid`, `note-author`), `authors`, `etal`, `years`, `title` (notas), `locator`, `paragraph` (párrafo del cuerpo con la cita o con la llamada de su nota), `note` (id de la nota), `context` (la oración del cuerpo), `ref_indexes`, `quotes` (citas textuales con `text`, `block`, `locator`).
 
 - **Cita textual en línea**: entre `“…”`, `«…»` o `"…"`, de 4 o más palabras; se asigna a la cita o llamada de nota más cercana de la misma oración (primero la de después).
 - **Cita en bloque**: párrafo de 40+ palabras sin comillas con marca explícita (`> `, estilo de cita de Word, o párrafo anterior terminado en `:`) y localizador al final o en su nota.
@@ -156,6 +160,7 @@ Correcciones sobre Zotero en perfiles oficiales: rayas en rangos fuera de URL/DO
 | `isbn ISBN [...]` | Checksum + Open Library + catálogo de bibliotecas vía Citoid (LoC/WorldCat) + Google Books. |
 | `pmid PMID [...]` | PubMed + Crossref (si PubMed trae DOI). |
 | `search --title T [--author A] [--year Y]` | Candidatos de Crossref y OpenAlex con `score`. Solo pistas. |
+| `work --title T [--author A] [--year Y] [--url URL] [--sources S1,S2]` | Obras sin DOI/ISBN: Open Library, Library of Congress, BNE, LA Referencia, repositorios DSpace (CONICET, UBA, UNNE, UNC, UNR, UNQ), Crossref, OpenAlex y la ficha de `--url` (Citoid), en paralelo. Mejor candidato por grupo independiente (repositorios + LA Referencia = un grupo) → mismos veredictos. Salida extra: `searched`, `groups`, `leads`. Detalle: `validation-sources.md`. |
 | `payload ID` | JSON Zotero vía Citoid (sin `key`/`version`/tags de catálogo) + `check`. Es un borrador: reconciliá fechas y sentence case con los registros validados. |
 | `integrity [--dois D1,D2] [--from audit.json match.json]` | Retractaciones y avisos (ver abajo). |
 
@@ -164,7 +169,7 @@ Correcciones sobre Zotero en perfiles oficiales: rayas en rangos fuera de URL/DO
 | Veredicto | Significado | Acción |
 |---|---|---|
 | `validated` | 2+ fuentes independientes coinciden (título ≥ 0,9, primer autor, año; se tolera año online vs impreso) y el manuscrito coincide. | Se puede crear. |
-| `single-source` | Respondió una sola fuente. | Buscar una segunda (sitio del editor, repositorio) y mostrarla. |
+| `single-source` | Respondió una sola fuente (o un solo grupo independiente). | Buscar una segunda (`work`, catálogo manual de `validation-sources.md`, ficha vía `work --url`) y mostrarla. |
 | `mismatch` | Las fuentes coinciden entre sí, el manuscrito difiere. | Mostrar `diffs_vs_manuscript`; corregir el manuscrito o preguntar. |
 | `conflict` | Las fuentes no coinciden entre sí. | No crear; revisión manual. |
 | `not-found` | DOI inexistente, ISBN con checksum inválido o sin resultados. | Marcar `[verificar]`. |
@@ -182,6 +187,31 @@ Revisa en lote (50 DOIs por consulta) los avisos de Crossref (`updated-by`, que 
 | `corrected` | `correction`, `erratum`, `corrigendum`, `addendum`, `clarification` | Informar; revisar si la corrección afecta lo citado. |
 | `new-version` | `new_version`, `new_edition` | Sugerir citar la versión vigente. |
 | `clean` / `unknown` | sin avisos / ninguna fuente respondió | `unknown` no es "limpio". Las obras sin DOI no se pueden revisar. |
+
+## `docx_revise.py`
+
+Aplica las correcciones a una **copia** del `.docx` como control de cambios: inserciones y eliminaciones (`w:ins`/`w:del`), cambios de cursiva (`w:rPrChange`) y comentarios, todo con el autor de `--author` y la fecha. No acepta nada ni toca el original; activa "Control de cambios" en la copia para que lo que edite el autor después también quede registrado. Si una sola edición falla, no escribe nada y devuelve `errors` (código 1).
+
+| Comando | Qué hace |
+|---|---|
+| `apply MANUSCRITO.docx EDITS.json --out SALIDA.docx [--author NOMBRE]` | Aplica `EDITS.json`. `--out` tiene que ser un archivo nuevo. Salida: `revisions` (`insertions`, `deletions`, `italic_changes`, `paragraphs_inserted`, `paragraphs_deleted`, `comments`), `paragraphs_revised`, `track_revisions_on`. |
+| `summary ARCHIVO.docx` | Revisiones y comentarios presentes, por tipo y autor: verificación y cifra para el reporte. |
+
+`EDITS.json` es una lista. Destino: `paragraph` = el índice que da `audit.json` (citas del cuerpo y entradas de la lista: párrafos no vacíos del documento, desde 0) o `note` = id de la nota (`"3"` al pie, `"e3"` final). Una cita con `note` se corrige en la nota, no en el párrafo que la llama.
+
+| `op` | Campos | Uso |
+|---|---|---|
+| `replace` | `old`, `new`, [`occurrence`] | Cita en el cuerpo o en una nota. `old` se copia del texto de la auditoría; si aparece más de una vez, `occurrence` (desde 1). |
+| `rewrite` | `new` | Párrafo completo (una entrada de la lista): diff palabra por palabra, se conservan los blancos de los bordes. |
+| `insert` | `after`, `new` | Párrafo nuevo después del índice `after` (entrada faltante); copia el formato del párrafo de referencia. |
+| `delete` | `paragraph` | Eliminar un párrafo (entrada duplicada). |
+| `comment` | `comment` | Comentario de Word sobre el párrafo: dudas, `[verificar: campo]`, fuente que respalda un cambio de datos. Cualquier otra operación acepta también `comment`. |
+
+- **Texto**: convención de la auditoría: `*cursiva*`, `[^3]` para una llamada de nota, `\*` para un asterisco literal. Si `old` y `new` no tienen `*`, el formato existente se respeta (el texto nuevo hereda el de al lado); con `*`, la cursiva de `new` manda y cada cambio queda como revisión de formato.
+- Varias ediciones sobre el mismo párrafo se aplican en orden, cada una sobre el resultado de la anterior.
+- **Rechaza** (y no escribe nada): `old` ausente o ambiguo, párrafos con revisiones pendientes de otra persona (que se acepten o rechacen antes), párrafos con campos vivos de Zotero (corregir en Zotero y refrescar), cuadros de texto, y llamadas de nota nuevas (solo se conservan o eliminan las existentes).
+- **Autocontrol**: antes de escribir comprueba, párrafo por párrafo, que "Rechazar todo" devuelve exactamente el original y "Aceptar todo" el texto pedido (con sus cursivas).
+- Comentarios: anclados al párrafo completo. Comentá los cambios de datos (autor, año, DOI, título) con la fuente que los respalda; los ajustes mecánicos de formato no necesitan comentario.
 
 ## `source_check.py`
 
