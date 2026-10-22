@@ -7,7 +7,8 @@
 - `Retry-After` con fecha HTTP ya no rompe la espera ante HTTP 429 (se usa la espera por defecto, acotada a 30 s).
 - Skill renombrada de `youtube-scraping` a `youtube-api` para coincidir con su carpeta; rutas de la documentación corregidas.
 - Mensaje de error de subtítulos: "PO token (proof of origin)".
-- 5 pruebas nuevas (28 en total), incluido un cliente con sesión falsa.
+- `comentarios_declarados` usa el total exacto (`countText`) en lugar del abreviado: en videos con millones de comentarios ("2,4 M") el valor anterior era 24. Las formas abreviadas (`mil`, `M`, `K`) se interpretan cuando no hay total exacto.
+- 7 pruebas nuevas (30 en total), incluido un cliente con sesión falsa.
 
 ## 1.0 — 2026-10-22
 

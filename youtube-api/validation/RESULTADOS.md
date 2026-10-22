@@ -15,7 +15,18 @@ Ejecución real del 22-10-2026 en Windows (Python 3.13.16, `requests` 2.34.2). V
 | `yt_datos.py todo --url ... --max 400 --con-respuestas` | las tres salidas en una pasada, mismos conteos |
 | `yt_datos.py metadatos --url <id inexistente>` | error informativo con el estado del reproductor; código de salida 1; sin archivos escritos |
 | `yt_datos.py metadatos --url no-es-un-id` | error de validación del ID |
-| `python validation/test_yt_datos.py` | 23 pruebas, todas OK (versión 1.0). Tras la revisión 1.1: 28 pruebas OK y `todo --max 30` contra el mismo video: 305 segmentos y 30 comentarios, con una sola descarga de la ficha |
+| `python validation/test_yt_datos.py` | 23 pruebas, todas OK (versión 1.0). Tras la revisión 1.1: 30 pruebas OK |
+
+## Revisión 1.1 (22-10-2026, misma máquina)
+
+| Comando | Resultado |
+|---|---|
+| `todo --url <j3ZIM9UaXlE> --max 400 --con-respuestas` | metadatos (88 080 vistas), 305 segmentos `es` automáticos, 254 de 254 comentarios; una sola descarga de la ficha |
+| `comentarios --url <j3ZIM9UaXlE> --max 400 --con-respuestas` (tras el fix) | 255 de 255 declarados: el video sigue recibiendo comentarios |
+| `comentarios --url youtu.be/... --orden top` | 175 de 254: "Destacados" es un subconjunto |
+| `metadatos --url dQw4w9WgXcQ` (segundo video, otro canal e idioma) | título y 1 829 270 700 vistas |
+| `transcripcion --url dQw4w9WgXcQ --lang en` | 61 segmentos, subtítulo **manual** (`automatica=false`) |
+| `comentarios --url dQw4w9WgXcQ --max 40` | 40 de **2 460 280** declarados. Antes del fix se informaban 24, porque se leía el contador abreviado "2,4 M" |
 
 ## Comparación con otras vías
 

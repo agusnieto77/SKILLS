@@ -104,6 +104,18 @@ class TestComentarios(unittest.TestCase):
     def test_conteo_ausente(self):
         self.assertIsNone(Y._contar_comentarios({}))
 
+    def test_conteo_prefiere_total_exacto_sobre_abreviado(self):
+        cabecera = {
+            "commentsCount": {"runs": [{"text": "2,4 M"}]},
+            "countText": {"runs": [{"text": "2.460.280"}, {"text": " comentarios"}]},
+        }
+        self.assertEqual(Y._contar_comentarios(cabecera), 2460280)
+
+    def test_conteo_abreviado_sin_total_exacto(self):
+        for texto, esperado in (("2,4 M", 2_400_000), ("15 mil", 15_000), ("3.1K", 3_100), ("1,2 mill.", 1_200_000)):
+            with self.subTest(texto=texto):
+                self.assertEqual(Y._contar_comentarios({"commentsCount": {"simpleText": texto}}), esperado)
+
     def test_token_de_orden_por_indice(self):
         cabecera = {
             "sortMenu": {

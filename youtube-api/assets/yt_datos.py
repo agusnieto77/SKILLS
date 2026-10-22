@@ -249,15 +249,40 @@ def _consulta_continuacion(token: dict) -> dict:
     return consulta
 
 
+_SUFIJOS_CONTEO = (
+    (r"(mil\s*mill|bn|b)\b", 1_000_000_000),
+    (r"(mill|m)\b", 1_000_000),
+    (r"(mil|k)\b", 1_000),
+)
+
+
+def _numero_de_conteo(texto: str) -> int | None:
+    """Convierte "2.460.280", "1,234", "2,4 M", "15 mil" o "3.1K" en entero.
+
+    Las formas abreviadas son aproximadas; por eso se prefiere el texto exacto.
+    """
+    limpio = str(texto).strip().lower().replace("\xa0", " ")
+    for patron, factor in _SUFIJOS_CONTEO:
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*" + patron, limpio)
+        if m:
+            return int(round(float(m.group(1).replace(",", ".")) * factor))
+    digitos = re.sub(r"[^\d]", "", limpio)
+    return int(digitos) if digitos else None
+
+
 def _contar_comentarios(cabecera: dict) -> int | None:
-    """Total de comentarios declarado por la pagina."""
-    for clave in ("commentsCount", "countText"):
+    """Total de comentarios declarado por la pagina.
+
+    `countText` trae el total exacto ("2.460.280 comentarios"); `commentsCount`
+    suele venir abreviado ("2,4 M"). Se usa el primero cuando existe.
+    """
+    for clave in ("countText", "commentsCount"):
         bloque = cabecera.get(clave) or {}
         texto = bloque.get("simpleText") or _texto_runs(bloque.get("runs"))
         if texto:
-            digitos = re.sub(r"[^\d]", "", str(texto))
-            if digitos:
-                return int(digitos)
+            numero = _numero_de_conteo(texto)
+            if numero is not None:
+                return numero
     return None
 
 
