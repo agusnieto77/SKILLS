@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/agusnieto77/SKILLS/actions/workflows/tests.yml/badge.svg)](https://github.com/agusnieto77/SKILLS/actions/workflows/tests.yml)
 
-Agent skills (Claude Code and compatible agents) for academic work.
+Agent skills for research and academic work. They follow the open [Agent Skills](https://agentskills.io) format, so they work with any compatible agent: OpenCode, Pi, Oh My Pi, Gentle Shell, Claude Code, Codex, Gemini CLI, Cursor and others.
 
 | Skill | What it does |
 |---|---|
@@ -11,7 +11,15 @@ Agent skills (Claude Code and compatible agents) for academic work.
 
 ## Install
 
-Copy or symlink a skill folder into your agent's skills directory (for example `~/.claude/skills/`). Each skill's `README.md` lists its requirements and configuration.
+Copy or symlink a skill folder into your agent's skills directory. For example, with OpenCode:
+
+```bash
+git clone https://github.com/agusnieto77/SKILLS.git
+mkdir -p ~/.config/opencode/skills
+cp -r SKILLS/tweetscraper ~/.config/opencode/skills/
+```
+
+OpenCode also loads project-level skills from `.opencode/skills/`. Other agents use their own directory (Pi: `~/.pi/agent/skills/`; Claude Code: `~/.claude/skills/`; many agents also read `~/.agents/skills/`). Each skill's `README.md` lists its requirements and configuration.
 
 ## License
 

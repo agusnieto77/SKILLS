@@ -1,6 +1,6 @@
 # tweetscraper
 
-Skill para agentes (Claude Code y compatibles) que recolecta y analiza datos de X/Twitter. Es el port a Node.js del paquete de R [TweetScraperR](https://github.com/agusnieto77/TweetScraperR): mismas tareas, mismo motor y mismas columnas, pero como un CLI que el agente ejecuta directamente y que devuelve JSON.
+Skill para agentes compatibles con el formato Agent Skills (OpenCode, Pi, Oh My Pi, Gentle Shell, Claude Code, Codex y otros) que recolecta y analiza datos de X/Twitter. Es el port a Node.js del paquete de R [TweetScraperR](https://github.com/agusnieto77/TweetScraperR): mismas tareas, mismo motor y mismas columnas, pero como un CLI que el agente ejecuta directamente y que devuelve JSON.
 
 - **Recolección**: tweets de una o varias cuentas, búsquedas con operadores y fechas, captura en vivo, respuestas e hilos, tweets por URL, media, Listas (tweets y miembros), perfiles, ficha "Acerca de esta cuenta", búsqueda de cuentas, seguidores, seguidos y retuiteadores.
 - **Motor**: Chromium con Playwright + stealth y la sesión real de la persona; cosecha el JSON GraphQL que dispara la propia app de x.com (no fabrica requests, así no necesita reproducir los headers anti-bot).
@@ -18,7 +18,7 @@ El agente lee `SKILL.md`; este README es para quien instala y mantiene la skill.
 
 ## Instalación
 
-Copiar o enlazar la carpeta en el directorio de skills del agente (por ejemplo `~/.claude/skills/tweetscraper`) e instalar el motor una vez:
+Copiar o enlazar la carpeta en el directorio de skills del agente (por ejemplo, en OpenCode, `~/.config/opencode/skills/tweetscraper`) e instalar el motor una vez:
 
 ```bash
 node scripts/tweetscraper.mjs install   # npm install + Chromium de Playwright
