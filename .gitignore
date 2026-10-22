@@ -19,6 +19,7 @@ venv/
 .zapa-scratch/
 *.local.json
 salidas-skill/
+wp-api/validation/datos/
 
 # Editors and OS
 .vscode/
