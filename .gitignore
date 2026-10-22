@@ -11,6 +11,9 @@ venv/
 .env.*
 *.key
 
+# Machine-local skill registry (gentle-ai skill-registry refresh; absolute user paths)
+.atl/
+
 # Local scratch, caches and test outputs (manuscripts, renders, reports)
 .zcit-scratch/
 .zapa-scratch/
