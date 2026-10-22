@@ -1,6 +1,6 @@
 # zotero-citations
 
-Skill para agentes (Claude Code y compatibles) que audita y normaliza las citas de un manuscrito académico usando Zotero como fuente de verdad.
+Skill para agentes compatibles con el formato Agent Skills (OpenCode, Pi, Oh My Pi, Gentle Shell, Claude Code, Codex y otros) que audita y normaliza las citas de un manuscrito académico usando Zotero como fuente de verdad.
 
 - **Normas**: APA 7 y Chicago 18.ª (notas y bibliografía, o autor-fecha) por defecto; cualquier estilo del repositorio de Zotero (10 800+); o un formato a medida reconstruido a partir de un ejemplo del usuario.
 - **Auditoría**: citas huérfanas y no citadas, "et al.", años, sufijos a/b, ibid., notas completas y abreviadas, reglas de formato de cada norma.
