@@ -148,19 +148,25 @@ test('thread reports an actual early pagination stop for the focal conversation'
   assert.match(ctx.warnings.join('\n'), /truncado/);
 });
 
-test('thread accepts completed pagination even when the final page retains a cursor', async () => {
-  const ctx = context();
-  harvested(ctx, { 3: doc([rawTweet('3')], 'EXHAUSTED') });
-  const result = await collect.thread(ctx, '3', 20);
-  assert.equal(result.meta.truncated, false);
-  assert.deepEqual(ctx.warnings, []);
-});
+for (const [stopped, stoppedAt, truncated] of [['interrupted', 0, true], ['interrupted', 1, false], ['rate_limited', 0, true]]) {
+  test(`thread handles harvest stop ${stopped} at result ${stoppedAt}`, async (t) => {
+    t.after(() => pool.resetLocks());
+    const ctx = context();
+    harvested(ctx, { 3: doc([rawTweet('3')]) });
+    const original = ctx.harvest;
+    ctx.harvest = async (params) => ({ ...await original(params), stopped, stoppedAt });
+    const result = await collect.thread(ctx, '3', 20);
+    assert.equal(result.meta.truncated, truncated);
+    assert.equal(result.rows[0].tweet_id, '3');
+    assert.equal(ctx.warnings.some((message) => /Hilo truncado/.test(message)), truncated);
+  });
+}
 
-for (const mode of ['completed', 'stable', 'limit', 'target', 'show-more']) {
+for (const mode of ['completed', 'stable', 'stable-show-more', 'limit', 'target', 'show-more']) {
   test('engine reports actual pagination stop: ' + mode, async (t) => {
     const { chromium } = createRequire(import.meta.url)('playwright-extra');
     const first = doc([rawTweet('3')], 'NEXT');
-    if (mode === 'show-more') first.data.instructions[0].entries[1] = { content: { cursorType: 'ShowMore', value: 'NEXT' } };
+    if (mode.endsWith('show-more')) first.data.instructions[0].entries[1] = { content: { cursorType: 'ShowMore', value: 'NEXT' } };
     const pages = mode === 'completed' ? [first, doc([rawTweet('6', '3', 'beto')])] : [first];
     let onResponse;
     const deliver = async () => {
@@ -176,7 +182,7 @@ for (const mode of ['completed', 'stable', 'limit', 'target', 'show-more']) {
     }));
     const result = await harvest({ urls: ['https://x.com/i/status/3'], opNames: ['TweetDetail'],
       maxScrolls: mode === 'limit' || mode === 'show-more' ? 1 : 6, targets: mode === 'target' ? [1] : [] });
-    assert.equal(result.results[0].paginationStoppedEarly, ['limit', 'target', 'show-more'].includes(mode));
+    assert.equal(result.results[0].paginationStoppedEarly, mode !== 'completed');
     assert.equal(result.results[0].docs.length, mode === 'completed' ? 2 : 1);
   });
 }
@@ -293,11 +299,6 @@ for (const phase of ['before fetch', 'fetch', 'body']) {
 test('media header timeout is cleared before reading a slow response body', async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-slow-'));
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  t.mock.method(AbortSignal, 'timeout', (ms) => {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(new Error('body timeout')), ms);
-    return controller.signal;
-  });
   const result = await io.writeMarkdown(path.join(tmp, 'note.md'), [{ media: ['https://video.twimg.com/slow'], media_tipo: ['video'] }],
     { downloadMedia: true, fetch: async (_url, { signal }) => new Response(new ReadableStream({
       async pull(stream) {
@@ -309,6 +310,38 @@ test('media header timeout is cleared before reading a slow response body', asyn
     }), { headers: { 'content-type': 'video/mp4' } }) });
   assert.equal(result.downloaded, 1);
   assert.deepEqual(result.warnings, []);
+});
+
+test('media overall deadline aborts stalled bodies without a caller signal and continues exporting', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-deadline-'));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let releaseBody;
+  let finished = false;
+  const output = path.join(tmp, 'note.md');
+  const pending = io.writeMarkdown(output, [{ media: ['https://pbs.twimg.com/stall', 'https://pbs.twimg.com/ok'] }], {
+    downloadMedia: true,
+    fetch: async (url, { signal }) => new Response(url.endsWith('/ok') ? 'abc' : new ReadableStream({
+      start(stream) {
+        releaseBody = () => stream.close();
+        signal.addEventListener('abort', () => stream.error(signal.reason), { once: true });
+      },
+    }), { headers: { 'content-type': 'image/jpeg' } }),
+  }).then((result) => { finished = true; return result; });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(300001);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(finished, true, 'el cuerpo detenido debe finalizar por el límite total');
+    const result = await pending;
+    assert.equal(result.downloaded, 1);
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /tiempo.*descarga/i);
+    assert.match(fs.readFileSync(output, 'utf8'), /!\[media\]\(note_media\//);
+    assert.equal(fs.readdirSync(path.join(tmp, 'note_media')).length, 1);
+  } finally {
+    if (!finished) releaseBody();
+    await pending;
+  }
 });
 
 test('Articles preserve title, cover, blocks, links and media without confusing note_tweet or preview', () => {

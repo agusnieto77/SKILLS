@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 — 2026-10-22
+
+- `thread` mantiene el aviso de truncamiento si la última página focal conserva un cursor Bottom o ShowMore, aunque tres desplazamientos consecutivos no produzcan respuestas nuevas.
+- Las descargas de media tienen un límite total de cinco minutos, incluido el cuerpo, además del plazo de 30 segundos para las cabeceras; un servidor detenido no bloquea indefinidamente la exportación y la cancelación sigue propagándose.
+- Regresiones offline para cursores pendientes tras agotamiento por desplazamiento, cuerpos detenidos y señales `stopped`/`stoppedAt` del recolector.
+
 ## 1.1.1 — 2026-10-22
 
 - `thread` distingue una paginación focal interrumpida de cursores históricos, paginaciones completadas y páginas auxiliares de antecedentes o continuación.

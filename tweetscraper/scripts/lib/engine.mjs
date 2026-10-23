@@ -161,7 +161,6 @@ export async function harvest(p) {
       let found = 0;
       let cursor = null;
       let paginationPending = false;
-      let exhausted = false;
       let page;
       try {
         page = await context.newPage();
@@ -246,13 +245,13 @@ export async function harvest(p) {
           await page.mouse.wheel(0, scrollPx);
           await page.waitForTimeout(waitMs);
           if (docs.length === before) {
-            if (++stable >= 3) { exhausted = true; break; }
+            if (++stable >= 3) break;
           } else stable = 0;
         }
       } catch (e) {
         if (!signal?.aborted) throw e;
       }
-      results.push({ url, docs, cursor, count: found, paginationStoppedEarly: paginationPending && !exhausted });
+      results.push({ url, docs, cursor, count: found, paginationStoppedEarly: paginationPending });
       if (signal?.aborted) {
         stop = stop || { reason: 'interrupted', op: null, at: k + 1, detail: null };
         break;

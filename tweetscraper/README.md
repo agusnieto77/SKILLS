@@ -65,7 +65,8 @@ JPEG/PNG/GIF/WebP/MP4 desde los hosts de media de X, sin cookies ni
 redirecciones; se omiten errores y excesos de tamaño con `warnings`. Una
 reexportación reutiliza archivos locales idénticos a la descarga verificada,
 sin sobrescribir archivos distintos. Cancelar detiene la exportación sin
-reemplazar la nota; el plazo de 30 segundos limita las cabeceras, no el cuerpo.
+reemplazar la nota. Cada descarga tiene 30 segundos para recibir cabeceras y
+un máximo de cinco minutos en total, incluido el cuerpo.
 `--max-details` limita páginas de detalle, no peticiones HTTP. Solo una
 paginación focal detenida antes de completarse, límites o datos inaccesibles
 generan avisos de hilo truncado; cursores históricos o auxiliares no bastan.

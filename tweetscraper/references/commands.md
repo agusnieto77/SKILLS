@@ -54,6 +54,8 @@ límites, padres inaccesibles e interrupciones generan `truncated: true` y
 advertencias. Los cursores de páginas anteriores, de una paginación completada
 o de consultas auxiliares no bastan para marcar truncamiento. La raíz puede ser
 conocida por `conversation_id` aunque no se haya podido recuperar su texto.
+Si el desplazamiento deja de producir respuestas pero la última página focal
+conserva un cursor Bottom o ShowMore, la paginación sigue pendiente.
 No interpretar un resultado parcial como hilo completo.
 
 `article` acepta `https://x.com/i/article/<id>` o el tweet que lo contiene.
@@ -137,9 +139,10 @@ omiten individualmente; `downloaded` cuenta archivos nuevos y `warnings` informa
 el resultado parcial. No se sobrescriben archivos de media existentes: se
 reutilizan únicamente si son archivos regulares con los mismos bytes que la
 descarga verificada; una diferencia genera un aviso y omite esa media.
-El plazo de 30 segundos se aplica a la recepción de cabeceras, no al cuerpo,
-que sigue sujeto al límite de bytes. Cancelar detiene las descargas restantes
-y no escribe ni reemplaza la nota Markdown.
+Cada descarga tiene un plazo de 30 segundos para recibir las cabeceras y un
+límite total de cinco minutos, incluido el cuerpo, además del límite de bytes.
+Si se supera un plazo, esa media se omite con un aviso y continúa la exportación.
+Cancelar detiene las descargas restantes y no escribe ni reemplaza la nota Markdown.
 Los bloques de Articles preservan encabezados, listas, citas, código, estilos y enlaces Draft.js; las
 entidades pueden llegar como objeto o lista. El texto externo se escapa para
 que HTML, Markdown o enlaces wiki de Obsidian no se conviertan en instrucciones

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Node.js >= 22.13 con npm; Chromium lo descarga Playwright en `install`. Funciona en cualquier cliente de Agent Skills con shell.
 metadata:
   author: Agustín Nieto
-  version: "1.1.1"
+  version: "1.1.2"
   based_on: TweetScraperR 0.8.1.9000 (https://github.com/agusnieto77/TweetScraperR)
 ---
 
