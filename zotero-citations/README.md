@@ -68,7 +68,7 @@ python scripts/validate_ref.py doi 10.1234/ejemplo --pmid 12345678 --author Pere
 
 `--etal` permite un prefijo declarado de la autoría, no sustituciones ni cambios de orden. PubMed recupera `AuthorList` con `efetch`; las fuentes parciales se advierten. Un único `--author` mantiene el control de primer autor.
 
-Entre catálogos y repositorios se comparan título, primer autor y año: sus listas pueden mezclar editores y colaboradores. Esto no valida la autoría completa. Los PMID inexistentes son `not-found` sin entradas en `unavailable`; los fallos reales de red o cuota sí se enumeran allí.
+Entre catálogos y repositorios se comparan título, primer autor y año: sus listas pueden mezclar editores y colaboradores. Esto no valida la autoría completa. Un PMID solo se considera inexistente si `esummary` y `efetch` responden válidamente sin encontrarlo; si falla alguna consulta y no se recuperan metadatos, PubMed se enumera en `unavailable`.
 
 Para reutilizar juicios de fidelidad, conservarlos en `results[].judgement` junto con el binding original. `--previous` los reutiliza solo en la misma ocurrencia con hashes y versiones idénticos y conocidos; de lo contrario marca `stale` y deja el juicio anterior como histórico. Sin texto completo, el resultado sigue siendo `no verificable`, no `sin respaldo`.
 

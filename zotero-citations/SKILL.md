@@ -4,7 +4,7 @@ description: "Trigger: auditar citas, normalizar a APA o Chicago, revisar biblio
 license: Apache-2.0
 metadata:
   author: citation-manager
-  version: "3.3.1"
+  version: "3.3.2"
 ---
 
 ## Activation Contract

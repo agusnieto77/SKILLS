@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.2 — 2026-10-22
+
+- **PubMed**: la ausencia de un PMID solo se confirma cuando `esummary` y `efetch` devuelven respuestas válidas y negativas. Un timeout, una cuota excedida o una respuesta `esummary` inutilizable se conserva como fuente no disponible aunque `efetch` devuelva un conjunto vacío.
+- **Autoría**: retirar `et al.` no sustituye apellidos estructurados por nombres de presentación; los avisos de truncación identifican la fuente o Zotero según la etiqueta del cotejo.
+- La política de fuentes con autoría ordenada usa una constante con nombre; el criterio de primer autor se calcula una sola vez por comparación.
+- Regresiones offline para fallos mixtos de PubMed y preservación de apellido/nombre estructurados.
+
 ## 3.3.1 — 2026-10-22
 
 - **PubMed**: un PMID ausente en una respuesta válida se informa como `not-found`, sin atribuirlo a una caída de red o cuota; se conservan las advertencias y los fallos reales de transporte.

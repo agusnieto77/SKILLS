@@ -41,6 +41,7 @@ from authorship import (  # noqa: E402
 )
 
 TIMEOUT = 25
+ORDERED_AUTHORSHIP_SOURCES = frozenset({"crossref", "datacite", "openalex", "pubmed"})
 
 
 def _ua_headers() -> dict:
@@ -249,10 +250,17 @@ def citoid_isbn(isbn: str) -> dict | None:
 def pubmed(pmid: str) -> dict | None:
     """Keep esummary metadata; only efetch establishes complete PubMed authorship."""
     warnings, entry = [], None
+    summary_absent = False
     try:
         data = get_json("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi", timeout=TIMEOUT,
                         params={"db": "pubmed", "id": pmid, "retmode": "json"})
-        entry = ((data or {}).get("result") or {}).get(str(pmid))
+        result = data.get("result") if isinstance(data, dict) else None
+        if not isinstance(result, dict):
+            raise ValueError("respuesta esummary sin resultados válidos")
+        entry = result.get(str(pmid))
+        if entry is not None and not isinstance(entry, dict):
+            raise ValueError("registro esummary inválido")
+        summary_absent = entry is None or bool(entry.get("error"))
         if entry and entry.get("error"):
             warnings.append(f"PubMed esummary: {entry['error']}")
             entry = None
@@ -274,7 +282,6 @@ def pubmed(pmid: str) -> dict | None:
         volume=entry.get("volume"), issue=entry.get("issue"), pages=entry.get("pages"), type="journal-article",
         doi=normalize_doi(doi), pmid=str(pmid),
     )
-    not_found = False
     try:
         response = request("GET", "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", timeout=TIMEOUT,
                            params={"db": "pubmed", "id": pmid, "retmode": "xml"})
@@ -289,7 +296,9 @@ def pubmed(pmid: str) -> dict | None:
         citation = next((node for node in root.iter() if node.tag in {"PubmedArticle", "PubmedBookArticle"}
                          and (node.findtext("MedlineCitation/PMID") or node.findtext("BookDocument/PMID")) == str(pmid)), None)
         if citation is None:
-            not_found = root.tag == "PubmedArticleSet"
+            # Solo ambas respuestas válidas y negativas confirman la ausencia.
+            if root.tag == "PubmedArticleSet" and summary_absent:
+                return None
             raise ValueError("la respuesta no contiene el PMID solicitado")
         article = citation.find("MedlineCitation/Article")
         if article is None:
@@ -336,11 +345,7 @@ def pubmed(pmid: str) -> dict | None:
         warnings.append("No se pudo comprobar la autoría completa en PubMed; se conserva la información disponible.")
     record["authorship_warnings"] = list(dict.fromkeys(warnings))
     if not record.get("title") and not record["authors"]:
-        if not_found:
-            return None
-        if warnings:
-            raise ConnectionError("; ".join(warnings))
-        return None
+        raise ConnectionError("; ".join(warnings))
     return record
 
 # --------------------------------------------------------------------------- works without identifier
@@ -622,12 +627,13 @@ def validate_work(title: str, author: str | None, year: str | None, url: str | N
 def agree(a: dict, b: dict) -> dict:
     title = title_similarity(a["title"], b["title"])
     author = surname_match((a["authors"] or [None])[0], (b["authors"] or [None])[0]) if a["authors"] and b["authors"] else None
+    author_ok = author is None or author >= 0.7
     years = {a.get("year"), b.get("year"), a.get("online_year"), b.get("online_year")} - {None}
     year_ok = a.get("year") == b.get("year") or bool(
         a.get("year") and b.get("year") and ({a["year"], a.get("online_year")} & {b["year"], b.get("online_year")}))
     # Los catálogos mezclan autores, editores y colaboradores: conservar el
     # cotejo histórico de primer autor, sin afirmar acuerdo de la lista completa.
-    ordered = all(r["source"] in {"crossref", "datacite", "openalex", "pubmed"}
+    ordered = all(r["source"] in ORDERED_AUTHORSHIP_SOURCES
                   or r["source"].startswith("doi-negotiation (") for r in (a, b))
     if ordered:
         authorship = compare_authorship(a["authors"], b["authors"],
@@ -637,10 +643,10 @@ def agree(a: dict, b: dict) -> dict:
                                        left_label="source_a", right_label="source_b")
         authorship["scope"] = "ordered"
     else:
-        authorship = {"agree": author is None or author >= 0.7, "complete": False,
+        authorship = {"agree": author_ok, "complete": False,
                       "scope": "first-author-only", "truncated": False, "diffs": [],
                       "warnings": ["Los catálogos solo se cotejan por primer autor; sus listas pueden incluir colaboradores."]}
-    ok = title >= 0.9 and (author is None or author >= 0.7) and year_ok and authorship["agree"]
+    ok = title >= 0.9 and author_ok and year_ok and authorship["agree"]
     return {"sources": [a["source"], b["source"]], "agree": ok, "title_similarity": round(title, 3),
             "first_author": author, "years": sorted(years), "authorship": authorship}
 

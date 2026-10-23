@@ -309,6 +309,18 @@ class OrderedAuthorship(unittest.TestCase):
                 result = compare_authorship(left, right, left_details=left_details, right_details=right_details)
                 self.assertEqual(result["diffs"], [])
 
+    def test_separate_etal_preserves_structured_family_and_given_names(self):
+        from authorship import _visible_authors, compare_authorship
+
+        names = ["de la Cruz, Ana", "et al."]
+        details = [{"family": "de la Cruz", "given": "Ana"}, {"family": "et al."}]
+        visible, structured, marker = _visible_authors(names, details)
+        self.assertEqual(visible, ["de la Cruz, Ana"])
+        self.assertTrue(marker)
+        self.assertEqual(structured, [{"family": "de la Cruz", "given": "Ana"}])
+        result = compare_authorship(names, ["de la Cruz", "Smith"], left_details=details)
+        self.assertEqual(result["diffs"], [])
+        self.assertEqual(details[0], {"family": "de la Cruz", "given": "Ana"})
 
     def test_declared_etal_accepts_only_a_proper_ordered_prefix(self):
         source = rec("crossref", authors=["Messeri", "Crockett", "Quirós"])
@@ -408,6 +420,23 @@ class PubMedAuthorship(unittest.TestCase):
                 mock.patch.object(vr, "request", side_effect=ConnectionError("fetch timeout")):
             result = vr.validate_pmid("999", {})
         self.assertIn("fetch timeout", result["unavailable"][0])
+
+    def test_esummary_failure_with_empty_efetch_stays_unavailable(self):
+        for error in (ConnectionError("summary timeout"), ConnectionError("quota exceeded"), ValueError("invalid JSON")):
+            with self.subTest(error=error), mock.patch.object(vr, "get_json", side_effect=error), \
+                    mock.patch.object(vr, "request", return_value=FakeResponse("<PubmedArticleSet/>")):
+                with self.assertRaisesRegex(ConnectionError, str(error)):
+                    vr.pubmed("999")
+                result = vr.validate_pmid("999", {})
+                self.assertTrue(result["unavailable"])
+                self.assertIn(str(error), result["unavailable"][0])
+
+    def test_invalid_esummary_with_empty_efetch_stays_unavailable(self):
+        for summary in (None, {}, {"error": "API rate limit exceeded"}, {"result": []}):
+            with self.subTest(summary=summary), mock.patch.object(vr, "get_json", return_value=summary), \
+                    mock.patch.object(vr, "request", return_value=FakeResponse("<PubmedArticleSet/>")):
+                with self.assertRaises(ConnectionError):
+                    vr.pubmed("999")
 
     def test_pmid_command_path_uses_efetch_with_summary_metadata(self):
         with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \

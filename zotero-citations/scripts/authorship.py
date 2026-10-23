@@ -84,9 +84,9 @@ def _visible_authors(values: list, details: list | None, *, corporate: bool = Fa
     structured = author_details(values, details, corporate=corporate)
     visible, marker = split_truncation(values)
     structured = structured[:len(visible)]
-    if marker and visible:
+    if marker and visible and len(visible) == len(values):
         name_field = "literal" if "literal" in structured[-1] else "family"
-        structured[-1] = {**structured[-1], name_field: visible[-1]}
+        structured[-1] = {**structured[-1], name_field: _ETAL.sub("", structured[-1][name_field]).strip()}
     return visible, structured, marker
 
 
@@ -112,7 +112,9 @@ def compare_authorship(left: list, right: list, *, left_details: list | None = N
             diffs.append({"field": "author_truncation", left_label: len(left), right_label: len(right),
                           "severity": "error"})
         elif not right_complete:
-            warnings.append("La lista de la derecha no permite comprobar la truncación declarada de la autoría.")
+            target = {"sources": "La fuente", "zotero": "Zotero", "source_b": "La segunda fuente"}.get(
+                right_label, f"La lista «{right_label}»")
+            warnings.append(f"{target} no permite comprobar la truncación declarada de la autoría.")
     # Una lista completa puede refutar autores extra visibles en la otra,
     # aunque esa otra lista sea incompleta; no basta comparar mínimos comunes.
     elif len(left) != len(right) and ((left_complete and right_complete)

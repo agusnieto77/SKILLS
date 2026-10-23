@@ -197,7 +197,7 @@ Correcciones sobre Zotero en perfiles oficiales: rayas en rangos fuera de URL/DO
 | `conflict` | Las fuentes no coinciden entre sí. | No crear; revisión manual. |
 | `not-found` | DOI o PMID inexistente, ISBN con checksum inválido o sin resultados. | Marcar `[verificar]`. |
 
-`unavailable` lista las fuentes que fallaron (red, cuota o respuesta inutilizable) para que el reporte no las cuente como validación. Un PMID ausente en una respuesta PubMed válida no genera una entrada en `unavailable`.
+`unavailable` lista las fuentes que fallaron (red, cuota o respuesta inutilizable) para que el reporte no las cuente como validación. La ausencia de un PMID solo se confirma si tanto `esummary` como `efetch` devuelven respuestas válidas y ninguna contiene el PMID. Un `esummary` fallido seguido de un `efetch` vacío conserva el fallo en `unavailable`; no confirma que el identificador sea inexistente.
 
 ### Autoría completa
 
