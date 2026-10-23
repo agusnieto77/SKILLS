@@ -50,6 +50,7 @@ export function publicTweetRow(t, provider, requestedId) {
 function inaccessible(response, body) {
   return [401, 403, 404, 410].includes(response.status) || [401, 403, 404, 410].includes(Number(body?.code)) ||
     body?.tweet?.author?.protected === true || body?.user?.protected === true ||
+    body?.__typename === 'TweetTombstone' ||
     /\b(private|protected|deleted|not found|unavailable|suspended|tombstone)\b/i.test(String(body?.message ?? body?.error ?? body?.__typename ?? ''));
 }
 

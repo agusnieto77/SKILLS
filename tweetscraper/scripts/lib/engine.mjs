@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { scanBody } from './parse.mjs';
+import { scanBody, findInstructions, hasThreadCursor } from './parse.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -127,7 +127,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * pool account and resumes from that URL. `cursors[k]` is injected into the
  * first request of the app so pagination resumes where it stopped.
  *
- * Returns { results: [{url, docs, cursor, count}], rateLimits, stopped, stoppedOp, stoppedAt, detail }.
+ * Returns { results: [{url, docs, cursor, count, paginationStoppedEarly}], rateLimits, stopped, stoppedOp, stoppedAt, detail }.
  */
 export async function harvest(p) {
   const {
@@ -160,6 +160,8 @@ export async function harvest(p) {
       const target = targets[k] || 0;
       let found = 0;
       let cursor = null;
+      let paginationPending = false;
+      let exhausted = false;
       let page;
       try {
         page = await context.newPage();
@@ -217,6 +219,7 @@ export async function harvest(p) {
             if (s.last) last = s.last;
             if (op === opNames[0]) {
               found += unit === 'users' ? s.users : s.tweets;
+              paginationPending = hasThreadCursor(findInstructions(doc));
               if (s.cursor) cursor = s.cursor;
             }
             onProgress({ stage: 'data', tweets: seenTweets.size, users: seenUsers.size, last });
@@ -243,13 +246,13 @@ export async function harvest(p) {
           await page.mouse.wheel(0, scrollPx);
           await page.waitForTimeout(waitMs);
           if (docs.length === before) {
-            if (++stable >= 3) break;
+            if (++stable >= 3) { exhausted = true; break; }
           } else stable = 0;
         }
       } catch (e) {
         if (!signal?.aborted) throw e;
       }
-      results.push({ url, docs, cursor, count: found });
+      results.push({ url, docs, cursor, count: found, paginationStoppedEarly: paginationPending && !exhausted });
       if (signal?.aborted) {
         stop = stop || { reason: 'interrupted', op: null, at: k + 1, detail: null };
         break;

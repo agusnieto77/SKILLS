@@ -128,13 +128,18 @@ export async function writeMarkdown(file, rows, { downloadMedia = false, maxMedi
       if (localized.has(media.url)) continue;
       localized.set(media.url, null);
       let response;
+      let headerTimer;
       try {
         signal?.throwIfAborted();
         const url = new URL(media.url);
         if (url.protocol !== 'https:' || url.username || url.password || url.port ||
           !['pbs.twimg.com', 'video.twimg.com'].includes(url.hostname)) throw new Error('host de media no permitido');
+        const headersTimeout = new AbortController();
+        headerTimer = setTimeout(() => headersTimeout.abort(new Error('tiempo de espera de cabeceras agotado')), 30000);
         response = await request(url.href, { credentials: 'omit', redirect: 'error',
-          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
+          signal: signal ? AbortSignal.any([signal, headersTimeout.signal]) : headersTimeout.signal });
+        clearTimeout(headerTimer);
+        signal?.throwIfAborted();
         const type = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
         const ext = MEDIA_TYPES.get(type);
         if (!response.ok || !ext || (media.tipo === 'photo' ? !type.startsWith('image/') : !type.startsWith('video/'))) throw new Error('HTTP o content-type no válido');
@@ -144,25 +149,39 @@ export async function writeMarkdown(file, rows, { downloadMedia = false, maxMedi
         let size = 0;
         if (!response.body) throw new Error('respuesta sin cuerpo');
         for await (const chunk of response.body) {
+          signal?.throwIfAborted();
           size += chunk.byteLength;
           if (size > maxMediaBytes) throw new Error('tamaño descargado excede el límite');
           chunks.push(chunk);
         }
+        signal?.throwIfAborted();
         if (!size) throw new Error('archivo vacío');
         fs.mkdirSync(folder, { recursive: true });
         if (fs.lstatSync(folder).isSymbolicLink()) throw new Error('carpeta de media no puede ser un enlace simbólico');
         const name = createHash('sha256').update(url.href).digest('hex').slice(0, 24) + '.' + ext;
         const target = path.join(folder, name);
-        fs.writeFileSync(target, Buffer.concat(chunks, size), { flag: 'wx' });
+        const content = Buffer.concat(chunks, size);
+        try {
+          fs.writeFileSync(target, content, { flag: 'wx' });
+          downloaded++;
+        } catch (e) {
+          if (e.code !== 'EEXIST') throw e;
+          const existing = fs.lstatSync(target);
+          if (!existing.isFile() || existing.size !== size || !fs.readFileSync(target).equals(content)) {
+            throw new Error('archivo de media existente no coincide con la descarga verificada');
+          }
+        }
         localized.set(media.url, path.relative(path.dirname(absolute), target).split(path.sep).map(encodeURIComponent).join('/'));
-        downloaded++;
       } catch (e) {
+        signal?.throwIfAborted();
         warnings.push(`Media omitida (${String(media.url)}): ${e.message}`);
       } finally {
+        clearTimeout(headerTimer);
         if (response?.body && !response.body.locked) await response.body.cancel().catch(() => {});
       }
     }
   }
+  signal?.throwIfAborted();
   const text = toMarkdown(rows, { ...render, localized: downloadMedia ? localized : undefined });
   if (file === '-') process.stdout.write(text);
   else { fs.mkdirSync(path.dirname(absolute), { recursive: true }); fs.writeFileSync(absolute, text, 'utf8'); }

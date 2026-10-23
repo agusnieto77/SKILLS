@@ -49,8 +49,10 @@ respuestas; `--max-details` limita **colecciones de páginas TweetDetail**, no
 peticiones HTTP: cada página puede paginar y el pool puede rotar cuentas.
 Los antecedentes tienen prioridad frente a continuación y otras respuestas
 cuando se alcanza `-n`. Cada grupo se identifica por `rol`; el archivo queda
-en orden cronológico. Los cursores pendientes, límites, padres inaccesibles
-e interrupciones generan `truncated: true` y advertencias. La raíz puede ser
+en orden cronológico. Una paginación del focal detenida antes de completarse,
+límites, padres inaccesibles e interrupciones generan `truncated: true` y
+advertencias. Los cursores de páginas anteriores, de una paginación completada
+o de consultas auxiliares no bastan para marcar truncamiento. La raíz puede ser
 conocida por `conversation_id` aunque no se haya podido recuperar su texto.
 No interpretar un resultado parcial como hilo completo.
 
@@ -131,9 +133,14 @@ Sin `--download-media` no se descarga ningún archivo: se conservan enlaces
 remotos. La descarga solo admite HTTPS de `pbs.twimg.com` y `video.twimg.com`,
 sin credenciales ni redirecciones, tipos JPEG/PNG/GIF/WebP/MP4 compatibles con
 el tipo de media. HTML, SVG, archivos vacíos, errores y excesos de tamaño se
-omiten individualmente; `downloaded` y `warnings` informan el resultado parcial.
-No se sobrescriben archivos de media existentes. Los bloques de Articles
-preservan encabezados, listas, citas, código, estilos y enlaces Draft.js; las
+omiten individualmente; `downloaded` cuenta archivos nuevos y `warnings` informa
+el resultado parcial. No se sobrescriben archivos de media existentes: se
+reutilizan únicamente si son archivos regulares con los mismos bytes que la
+descarga verificada; una diferencia genera un aviso y omite esa media.
+El plazo de 30 segundos se aplica a la recepción de cabeceras, no al cuerpo,
+que sigue sujeto al límite de bytes. Cancelar detiene las descargas restantes
+y no escribe ni reemplaza la nota Markdown.
+Los bloques de Articles preservan encabezados, listas, citas, código, estilos y enlaces Draft.js; las
 entidades pueden llegar como objeto o lista. El texto externo se escapa para
 que HTML, Markdown o enlaces wiki de Obsidian no se conviertan en instrucciones
 ni seleccionen archivos locales.

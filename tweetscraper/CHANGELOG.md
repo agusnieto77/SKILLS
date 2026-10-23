@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 — 2026-10-22
+
+- `thread` distingue una paginación focal interrumpida de cursores históricos, paginaciones completadas y páginas auxiliares de antecedentes o continuación.
+- Las reexportaciones Markdown reutilizan media local idéntica a la descarga verificada, sin sobrescribir archivos distintos ni perder los enlaces relativos.
+- La cancelación de descargas detiene la exportación y conserva la nota anterior; el plazo de 30 segundos se aplica solo a las cabeceras, no al cuerpo.
+- Syndication reconoce `TweetTombstone` como contenido inaccesible; Articles exige marcadores propios y no confunde entidades con título e ID.
+- Regresiones offline para estos casos y rutas del CLI convertidas con `fileURLToPath`.
+
 ## 1.1.0 — 2026-10-22
 
 - Lectura pública explícita `public-tweet`: FxTwitter y fallback syndication con token calculado, sin cookies ni sesión y con freno ante contenido inaccesible.

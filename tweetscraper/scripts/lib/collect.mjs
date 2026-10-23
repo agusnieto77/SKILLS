@@ -7,7 +7,7 @@
 // continues where it stopped instead of starting over.
 import * as pool from './pool.mjs';
 import { harvest } from './engine.mjs';
-import { parseTimelineTweets, parseUsers, userRow, aboutRow, reconstructThread, parseArticles, findInstructions } from './parse.mjs';
+import { parseTimelineTweets, parseUsers, userRow, aboutRow, reconstructThread, parseArticles } from './parse.mjs';
 import { fetchPublicTweet } from './public.mjs';
 
 const DISABLE_MSGS = {
@@ -55,7 +55,7 @@ export function searchUrl(q, f) {
  * data it records a warning and returns it. `ctx.harvest` replaces the engine
  * (tests drive the rotation with scripted responses).
  */
-export async function harvestPool(ctx, urls, opNames, { maxScrolls = 25, n = null, unit = 'tweets' } = {}) {
+export async function harvestPool(ctx, urls, opNames, { maxScrolls = 25, n = null, unit = 'tweets', pagination = null } = {}) {
   const run = ctx.harvest ?? harvest;
   const op = opNames[0];
   const docs = urls.map(() => []);
@@ -110,6 +110,7 @@ export async function harvestPool(ctx, urls, opNames, { maxScrolls = 25, n = nul
       nResp += r.docs.length;
       found[j] += r.count;
       if (r.cursor) cursors[j] = r.cursor;
+      if (pagination) pagination[j] = !!r.paginationStoppedEarly || (!!res.stopped && res.stoppedAt === i);
     });
     const rl = res.rateLimits[op];
     const stopped = res.stopped;
@@ -307,8 +308,10 @@ export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
     if (seen.has(id)) continue;
     seen.add(id);
     let docs;
+    const pagination = [];
     try {
-      [docs] = await harvestPool(ctx, [`https://x.com/i/status/${id}`], ['TweetDetail'], { maxScrolls: scrollsFor(n), n });
+      [docs] = await harvestPool(ctx, [`https://x.com/i/status/${id}`], ['TweetDetail'],
+        { maxScrolls: scrollsFor(n), n, pagination });
     } catch (e) {
       if (!byId.size) throw e;
       truncated = true;
@@ -316,9 +319,7 @@ export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
       break;
     }
     for (const row of tweetsOf(docs)) byId.set(row.tweet_id, row);
-    if (docs.some((d) => parseTimelineTweets(d).cursor || hasThreadCursor(findInstructions(d)))) {
-      truncated = true;
-    }
+    if (id === requestedId && pagination[0]) truncated = true;
     if (!byId.has(requestedId)) throw new CollectError('No se pudo recuperar el tweet focal.');
     const classified = reconstructThread([...byId.values()], requestedId);
     if (classified.missingParent && !seen.has(classified.missingParent)) pending.unshift(classified.missingParent);
@@ -336,12 +337,6 @@ export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
   if (truncated) ctx.warn('Hilo truncado: límite, cursor pendiente, interrupción o antecedente inaccesible; no se garantiza completitud.');
   return { rows, prefix: 'api_thread_' + requestedId,
     meta: { requested_id: requestedId, root_id: classified.rootId, truncated, details: seen.size } };
-}
-
-function hasThreadCursor(value) {
-  if (!value || typeof value !== 'object') return false;
-  if (value.cursorType === 'Bottom' || value.cursorType === 'ShowMore') return true;
-  return Object.values(value).some(hasThreadCursor);
 }
 
 const ARTICLE_OPS = ['ArticleEntityResultByRestId', 'TweetResultByRestId', 'TweetDetail'];

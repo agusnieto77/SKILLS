@@ -178,6 +178,13 @@ export function parseTimelineTweets(doc) {
   return { tweets, cursor };
 }
 
+/** Pending bottom/ShowMore cursors in the current page, not earlier responses. */
+export function hasThreadCursor(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (value.cursorType === 'Bottom' || value.cursorType === 'ShowMore' || /^cursor-bottom/.test(value.entryId ?? '')) return true;
+  return Object.values(value).some(hasThreadCursor);
+}
+
 /** Thread roles are independent of timeline ordering and never include quoted tweets. */
 export function reconstructThread(tweets, requestedId) {
   const byId = new Map(tweets.filter((t) => t.tweet_id).map((t) => [t.tweet_id, t]));
@@ -212,7 +219,7 @@ export function reconstructThread(tweets, requestedId) {
 /** Articles have their own schema: a preview is never passed off as a full body. */
 export function parseArticles(doc) {
   const out = new Map();
-  function walk(value, author = null, tweetId = null) {
+  function walk(value, author = null, tweetId = null, articleContext = false) {
     if (!value || typeof value !== 'object') return;
     if (value.legacy?.full_text != null) {
       const user = value.core?.user_results?.result;
@@ -220,7 +227,7 @@ export function parseArticles(doc) {
       tweetId = value.rest_id ?? tweetId;
     }
     const state = value.content_state;
-    const isArticle = typeof value.title === 'string' || state?.blocks || typeof value.preview_text === 'string';
+    const isArticle = state != null || typeof value.preview_text === 'string' || articleContext && typeof value.title === 'string';
     if (isArticle && value.rest_id) {
       const blocks = Array.isArray(state?.blocks) ? state.blocks : [];
       const entityMap = Array.isArray(state?.entityMap)
@@ -249,7 +256,9 @@ export function parseArticles(doc) {
       return;
     }
     for (const [key, child] of Object.entries(value)) {
-      if (key !== 'note_tweet' && key !== 'quoted_status_result' && key !== 'retweeted_status_result') walk(child, author, tweetId);
+      if (key !== 'note_tweet' && key !== 'quoted_status_result' && key !== 'retweeted_status_result') {
+        walk(child, author, tweetId, key === 'article_results' || articleContext && key === 'result');
+      }
     }
   }
   walk(doc);

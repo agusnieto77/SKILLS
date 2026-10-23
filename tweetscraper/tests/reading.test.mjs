@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { harvest } from '../scripts/lib/engine.mjs';
 import * as parse from '../scripts/lib/parse.mjs';
 import * as io from '../scripts/lib/io.mjs';
 
@@ -24,14 +27,15 @@ const doc = (tweets, cursor = null) => ({ data: { instructions: [{ entries: [
   ...tweets.map((t) => ({ entryId: 'tweet-' + t.rest_id, content: { itemContent: { tweet_results: { result: t } } } })),
   ...(cursor ? [{ entryId: 'cursor-bottom-1', content: { value: cursor } }] : []),
 ] }] } });
-function harvested(ctx, pages) {
+function harvested(ctx, pages, pagination = {}) {
   pool.importSession({ authToken: 'offline', ct0: 'offline', account: 'offline' });
   const calls = [];
   ctx.harvest = async (p) => {
     calls.push(p);
     const id = collect.statusId(p.urls[0]) ?? '800';
     const page = pages[id] ?? doc([]);
-    return { results: [{ docs: [{ doc: page }], count: 1 }], rateLimits: {}, stopped: null };
+    return { results: [{ docs: (Array.isArray(page) ? page : [page]).map((d) => ({ doc: d })),
+      count: 1, paginationStoppedEarly: pagination[id] ?? false }], rateLimits: {}, stopped: null };
   };
   return calls;
 }
@@ -91,6 +95,14 @@ test('public read rejects mismatched or malformed payloads and never falls back 
   await assert.rejects(collect.publicTweet(ctx, '123'), /abort|cancel/i);
 });
 
+test('syndication TweetTombstone stops with the explicit inaccessible error', async () => {
+  let calls = 0;
+  const ctx = context(async () => ++calls === 1 ? json({}, 503) : json({ __typename: 'TweetTombstone' }));
+  await assert.rejects(collect.publicTweet(ctx, '123'), /Tweet privado, protegido, eliminado o inaccesible/);
+  assert.equal(calls, 2);
+  assert.equal(ctx.warnings.filter((w) => /no utilizable/.test(w)).length, 1);
+});
+
 test('thread reconstructs missing ancestors and author continuation, deduplicates and sorts', async () => {
   const ctx = context();
   const calls = harvested(ctx, {
@@ -107,6 +119,67 @@ test('thread reconstructs missing ancestors and author continuation, deduplicate
   assert.equal(result.meta.truncated, false);
   assert.equal(calls.length, 5);
 });
+
+test('thread ignores historical cursors after completed focal pagination', async () => {
+  const ctx = context();
+  harvested(ctx, { 3: [doc([rawTweet('3')], 'NEXT'), doc([rawTweet('6', '3', 'beto')])] });
+  const result = await collect.thread(ctx, '3', 20);
+  assert.equal(result.meta.truncated, false);
+  assert.deepEqual(result.rows.map((r) => r.tweet_id), ['3', '6']);
+  assert.deepEqual(ctx.warnings, []);
+});
+
+test('thread ignores cursors on ancestor and continuation lookup pages', async () => {
+  const ctx = context();
+  const ancestor = doc([rawTweet('2')]);
+  ancestor.data.instructions[0].entries.push({ content: { cursorType: 'ShowMore', value: 'UNRELATED' } });
+  harvested(ctx, { 3: doc([rawTweet('3', '2'), rawTweet('4', '3')]),
+    2: ancestor, 4: doc([rawTweet('4', '3')], 'OTHER_REPLIES') }, { 2: true, 4: true });
+  const result = await collect.thread(ctx, '3', 20);
+  assert.equal(result.meta.truncated, false);
+  assert.deepEqual(ctx.warnings, []);
+});
+
+test('thread reports an actual early pagination stop for the focal conversation', async () => {
+  const ctx = context();
+  harvested(ctx, { 3: doc([rawTweet('3')], 'PENDING') }, { 3: true });
+  const result = await collect.thread(ctx, '3', 20);
+  assert.equal(result.meta.truncated, true);
+  assert.match(ctx.warnings.join('\n'), /truncado/);
+});
+
+test('thread accepts completed pagination even when the final page retains a cursor', async () => {
+  const ctx = context();
+  harvested(ctx, { 3: doc([rawTweet('3')], 'EXHAUSTED') });
+  const result = await collect.thread(ctx, '3', 20);
+  assert.equal(result.meta.truncated, false);
+  assert.deepEqual(ctx.warnings, []);
+});
+
+for (const mode of ['completed', 'stable', 'limit', 'target', 'show-more']) {
+  test('engine reports actual pagination stop: ' + mode, async (t) => {
+    const { chromium } = createRequire(import.meta.url)('playwright-extra');
+    const first = doc([rawTweet('3')], 'NEXT');
+    if (mode === 'show-more') first.data.instructions[0].entries[1] = { content: { cursorType: 'ShowMore', value: 'NEXT' } };
+    const pages = mode === 'completed' ? [first, doc([rawTweet('6', '3', 'beto')])] : [first];
+    let onResponse;
+    const deliver = async () => {
+      const next = pages.shift();
+      if (next) await onResponse({ url: () => 'https://x.com/i/api/graphql/offline/TweetDetail',
+        headers: () => ({}), text: async () => JSON.stringify(next), status: () => 200 });
+    };
+    const page = { on: (_event, fn) => { onResponse = fn; }, goto: deliver, url: () => 'https://x.com/i/status/3',
+      waitForTimeout: async () => {}, mouse: { wheel: deliver }, close: async () => {} };
+    t.mock.method(chromium, 'launch', async () => ({
+      newContext: async () => ({ newPage: async () => page, cookies: async () => [{ name: 'auth_token', value: 'offline' }] }),
+      close: async () => {},
+    }));
+    const result = await harvest({ urls: ['https://x.com/i/status/3'], opNames: ['TweetDetail'],
+      maxScrolls: mode === 'limit' || mode === 'show-more' ? 1 : 6, targets: mode === 'target' ? [1] : [] });
+    assert.equal(result.results[0].paginationStoppedEarly, ['limit', 'target', 'show-more'].includes(mode));
+    assert.equal(result.results[0].docs.length, mode === 'completed' ? 2 : 1);
+  });
+}
 
 test('thread limits detail pages and output, keeps focal and warns on truncation and missing parent', async () => {
   const ctx = context();
@@ -169,6 +242,75 @@ test('media downloads are opt-in, bounded, type checked, relative and fail indep
   await assert.rejects(io.writeMarkdown('-', rows, { downloadMedia: true }), /archivo|file/i);
 });
 
+test('media re-export reuses matching files and preserves local Markdown links', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-rerun-'));
+  const output = path.join(tmp, 'note.md');
+  const rows = [{ media: ['https://pbs.twimg.com/same'] }];
+  const options = { downloadMedia: true, capturedAt: '2026-10-22T00:00:00Z',
+    fetch: async () => new Response('abc', { headers: { 'content-type': 'image/jpeg' } }) };
+  await io.writeMarkdown(output, rows, options);
+  const original = fs.readFileSync(output, 'utf8');
+  const repeated = await io.writeMarkdown(output, rows, options);
+  assert.deepEqual(repeated.warnings, []);
+  assert.equal(repeated.downloaded, 0);
+  assert.equal(fs.readFileSync(output, 'utf8'), original);
+  const folder = path.join(tmp, 'note_media');
+  assert.equal(fs.readdirSync(folder).length, 1);
+  const target = path.join(folder, fs.readdirSync(folder)[0]);
+  fs.writeFileSync(target, 'bad');
+  const mismatch = await io.writeMarkdown(output, rows, options);
+  assert.equal(mismatch.warnings.length, 1);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'bad');
+  assert.doesNotMatch(fs.readFileSync(output, 'utf8'), /!\[media\]/);
+});
+
+for (const phase of ['before fetch', 'fetch', 'body']) {
+  test('media cancellation during ' + phase + ' stops export without warnings or writing the note', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-abort-'));
+    const output = path.join(tmp, 'note.md');
+    fs.writeFileSync(output, 'Nota anterior');
+    const controller = new AbortController();
+    const reason = new Error('cancelación solicitada');
+    let calls = 0;
+    if (phase === 'before fetch') controller.abort(reason);
+    const fetch = async () => {
+      calls++;
+      if (phase === 'fetch') { controller.abort(reason); throw reason; }
+      return new Response(new ReadableStream({ pull(stream) {
+        controller.abort(reason);
+        stream.enqueue(new Uint8Array([1, 2, 3]));
+        stream.close();
+      } }), { headers: { 'content-type': 'image/jpeg' } });
+    };
+    await assert.rejects(io.writeMarkdown(output, [{ media: ['https://pbs.twimg.com/one', 'https://pbs.twimg.com/two'] }],
+      { downloadMedia: true, signal: controller.signal, fetch }), (e) => e === reason);
+    assert.equal(calls, phase === 'before fetch' ? 0 : 1);
+    assert.equal(fs.readFileSync(output, 'utf8'), 'Nota anterior');
+    assert.equal(fs.existsSync(path.join(tmp, 'note_media')), false);
+  });
+}
+
+test('media header timeout is cleared before reading a slow response body', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-slow-'));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(AbortSignal, 'timeout', (ms) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error('body timeout')), ms);
+    return controller.signal;
+  });
+  const result = await io.writeMarkdown(path.join(tmp, 'note.md'), [{ media: ['https://video.twimg.com/slow'], media_tipo: ['video'] }],
+    { downloadMedia: true, fetch: async (_url, { signal }) => new Response(new ReadableStream({
+      async pull(stream) {
+        await new Promise((resolve) => setImmediate(resolve));
+        t.mock.timers.tick(30001);
+        if (signal.aborted) stream.error(signal.reason);
+        else { stream.enqueue(new Uint8Array([1, 2, 3])); stream.close(); }
+      },
+    }), { headers: { 'content-type': 'video/mp4' } }) });
+  assert.equal(result.downloaded, 1);
+  assert.deepEqual(result.warnings, []);
+});
+
 test('Articles preserve title, cover, blocks, links and media without confusing note_tweet or preview', () => {
   const tr = rawTweet('10');
   tr.article = { article_results: { result: fixture.article } };
@@ -194,6 +336,19 @@ test('Articles preserve title, cover, blocks, links and media without confusing 
   delete tr.article;
   tr.note_tweet = { note_tweet_results: { result: { text: 'Esto es un tweet largo' } } };
   assert.deepEqual(parse.parseArticles(doc([tr])), []);
+});
+
+test('Article detection rejects titled entities and still descends to actual Article markers', async () => {
+  const tr = rawTweet('10');
+  tr.card = { rest_id: '900', title: 'No es Article', nested: { article_results: {
+    result: { rest_id: '800', title: 'Article identificado por su contenedor' },
+  } } };
+  const rows = parse.parseArticles(doc([tr]));
+  assert.deepEqual(rows.map((r) => r.article_id), ['800']);
+  assert.equal(rows[0].tweet_id, '10');
+  const ctx = context();
+  harvested(ctx, { 10: doc([{ ...rawTweet('10'), card: { rest_id: '900', title: 'No es Article' } }]) });
+  await assert.rejects(collect.article(ctx, '10'), /No se encontró un Article accesible/);
 });
 
 test('article collector harvests actual Article and linked Article pages, reporting previews', async () => {
@@ -250,7 +405,7 @@ test('convert CLI writes Markdown and rejects download flags for JSON', () => {
   const input = path.join(tmp, 'in.json');
   fs.writeFileSync(input, JSON.stringify([{ tweet_id: '1', texto: 'hola' }]));
   const cli = new URL('../scripts/tweetscraper.mjs', import.meta.url);
-  const run = (...args) => spawnSync(process.execPath, [cli.pathname.replace(/^\/(\w:)/, '$1'), 'convert', '-i', input, ...args], { encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, [fileURLToPath(cli), 'convert', '-i', input, ...args], { encoding: 'utf8' });
   const success = run('-o', path.join(tmp, 'note.md'), '--md-style', 'compact', '--query', 'ciencia');
   assert.equal(success.status, 0, success.stderr + success.stdout);
   assert.equal(JSON.parse(success.stdout).warnings.length, 0);
