@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.4 — 2026-10-23
+
+- La ficha watch vuelve a tolerar `AGE_CHECK_REQUIRED`/`CONTENT_CHECK_REQUIRED`: `metadatos` y `comentarios` leen el HTML público de videos con verificación de edad, como antes de 1.2.3. Solo el reproductor rechaza esos estados.
+
 ## 1.2.3 — 2026-10-22
 
 - Cierre seguro ante `LOGIN_REQUIRED`: solo señales positivas de restricción por video permiten continuar; motivos vacíos, desconocidos o de idioma no reconocido detienen el cliente.

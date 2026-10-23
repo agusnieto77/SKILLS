@@ -496,11 +496,17 @@ class ClienteYouTube:
         self.bloqueo = motivo
         return YouTubeError(_mensaje_bloqueo(motivo))
 
-    def _validar_reproducibilidad(self, datos: dict) -> None:
-        """Distingue restricciones positivas del video de LOGIN_REQUIRED no identificado."""
+    def _validar_reproducibilidad(self, datos: dict, ficha: bool = False) -> None:
+        """Distingue restricciones positivas del video de LOGIN_REQUIRED no identificado.
+
+        En la ficha watch, AGE_CHECK_REQUIRED/CONTENT_CHECK_REQUIRED no impiden leer
+        metadatos ni comentarios publicos del HTML; solo el reproductor los rechaza.
+        """
         estado = datos.get("playabilityStatus") or {}
         status = estado.get("status")
         if status in ESTADOS_RESTRICCION_VIDEO:
+            if ficha:
+                return
             raise YouTubeError(f"El video requiere verificar acceso o edad: {estado.get('reason') or status}")
         if status != "LOGIN_REQUIRED":
             return
@@ -579,7 +585,7 @@ class ClienteYouTube:
                 f"No se pudo abrir la ficha del video (HTTP {respuesta.status_code}). "
                 "Puede ser un video privado, restringido por edad o eliminado."
             )
-        self._validar_reproducibilidad(extraer_respuesta_player(respuesta.text) or {})
+        self._validar_reproducibilidad(extraer_respuesta_player(respuesta.text) or {}, ficha=True)
         self._html[video_id] = respuesta.text
         return respuesta.text
 

@@ -948,6 +948,18 @@ class TestLotesCLI(unittest.TestCase):
                 self.assertEqual([r["ok"] for r in recibo["resultados"]], [False, True])
                 self.assertIsNone(cliente.bloqueo)
 
+    def test_ficha_con_verificacion_de_edad_conserva_metadatos(self):
+        for status in sorted(Y.ESTADOS_RESTRICCION_VIDEO):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as carpeta:
+                ficha = {"playabilityStatus": {"status": status}, "videoDetails": {"videoId": VIDEO_ID, "title": "T"}}
+                sesion = FakeSesion(gets=[FakeRespuesta(texto="var ytInitialPlayerResponse = " + json.dumps(ficha) + ";")])
+                cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+                with patch.object(Y, "ClienteYouTube", return_value=cliente):
+                    self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID, "--out", carpeta]), 0)
+                datos = json.loads((Path(carpeta) / f"{VIDEO_ID}_metadatos.json").read_text(encoding="utf-8"))
+                self.assertEqual(datos["titulo"], "T")
+                self.assertIsNone(cliente.bloqueo)
+
     def test_dos_login_required_consecutivos_detienen_lote(self):
         restringido = 'var ytInitialPlayerResponse = {"playabilityStatus":'
         restringido += '{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm your age"}};'

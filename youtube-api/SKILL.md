@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Python >= 3.10 con requests. Sin cuenta ni API key; funciona en cualquier cliente de Agent Skills con shell y HTTP.
 metadata:
   author: "agusnieto77"
-  version: "1.2.3"
+  version: "1.2.4"
 ---
 
 ## Activation Contract
