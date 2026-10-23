@@ -75,7 +75,11 @@ python youtube-api/assets/yt_datos.py todo --archivo-ids ids.txt \
 
 Todos los subcomandos aceptan `--url` con varios valores (también repetible) y `--archivo-ids`; se concatenan primero las URLs y después las líneas del archivo. Máximo **50 entradas**, incluidas repetidas o inválidas, comprobado antes de acceder a la red. Se procesa secuencialmente con pausa, sin cuentas, proxies ni evasión. No fragmentar campañas masivas para eludir este alcance.
 
-Cada entrada conserva posición, entrada original, ID cuando es válido, resultado y/o error en `lote_<comando>.json`; un fallo no aborta los otros videos. `todo` también conserva errores por operación sin perder las demás salidas. Los archivos por ID siguen disponibles; entradas repetidas sobrescriben esos archivos, pero cada resultado queda en el recibo. Código de salida: 0 si no hubo errores, 1 si hubo fallos de recolección o escritura, 2 por entrada única inválida/configuración inválida y 3 por error de red en una operación única. Una cobertura parcial por límites no es un fallo de ejecución: revisar siempre `parcial`.
+Cada entrada conserva posición, entrada original, ID cuando es válido, resultado y/o error en `lote_<comando>.json`. El recibo se inicia antes de acceder a la red y se reemplaza de forma atómica después de cada entrada; una interrupción conserva la última actualización completa, no los datos de la operación interrumpida. Las entradas pendientes figuran como `estado=no_procesado`, `motivo=pendiente`.
+
+Los errores de un video no abortan los demás, salvo **HTTP 429 tras agotar el reintento o su presupuesto**, o **`LOGIN_REQUIRED`**: se detienen las peticiones, incluidos hilos y operaciones pendientes de `todo`; las entradas restantes quedan `no_procesado` con motivo `http_429` o `login_required`. No se intenta eludir el bloqueo. `todo` aísla errores por operación, incluidos fallos de escritura; si tampoco puede escribir el JSON de error, conserva `error_escritura` en el resultado y en el recibo cuando este puede guardarse.
+
+Los archivos por ID siguen disponibles; entradas repetidas sobrescriben esos archivos, pero cada resultado queda en el recibo. Códigos de salida: **0** sin errores; **1** por fallos de recolección, bloqueo o escritura (también fallos de red en lotes y `todo`); **2** por entrada única inválida/configuración inválida; **3** por error de red en una operación única distinta de `todo`, tanto en `watch` como durante la paginación de comentarios o respuestas. En este último caso se guardan los datos parciales y `error_red=true`. Una cobertura parcial solo por límites no es un fallo de ejecución: revisar siempre `parcial`.
 
 `--max` limita filas totales (padres y respuestas) durante la recolección: se priorizan padres y luego respuestas, sin descargar hilos si ya no hay espacio. `--max-paginas` admite 1–60 y `--max-peticiones` 1–120; valores predeterminados 60 y 120. El presupuesto es compartido por las llamadas `/next` de orden, padres y respuestas, **por video**; los reintentos HTTP 429 cuentan como peticiones. No incluye la ficha `watch`, `player` ni `timedtext`. No se consulta otra página al agotarlo.
 
@@ -87,9 +91,9 @@ Para inventariar una lista o canal sin descargar videos, ver [alternativas](refe
 
 **Pistas** (`<id>_pistas.json`): lista de idioma, nombre, `automatica`, `traducible` y URL original publicada por la pista.
 
-**Transcripción** (`<id>_transcripcion.json` y `.csv`): `segmentos` con `inicio`, `duracion`, `texto`, más texto completo; `idioma_fuente`, `idioma_destino`, `idioma` solicitado, `automatica` (pista fuente ASR), `traducida`, `metodo_traduccion`, `traduccion_verificada` y aviso cuando se solicita `tlang`.
+**Transcripción** (`<id>_transcripcion.json` y `.csv`): `segmentos` con `inicio`, `duracion`, `texto`, más texto completo; `idioma` e `idioma_fuente` conservan el idioma de la pista fuente por compatibilidad; `idioma_destino` indica el destino solicitado (o la fuente sin traducción). Incluye `automatica` (pista fuente ASR), `traducida`, `metodo_traduccion`, `traduccion_verificada` y aviso cuando se solicita `tlang`.
 
-**Comentarios** (`<id>_comentarios.json` y `.csv`): filas con `comment_id`, autor/canal, texto, fecha, likes, respuestas, nivel y `respuesta_a`; JSON con `comentarios_declarados`, `obtenidos`, `parcial`, `motivo_fin`, presupuesto consumido, `hilos_no_expandidos` y `errores`. Conservar el JSON junto al CSV: el CSV no contiene la cobertura. El fin natural de continuaciones no prueba exhaustividad. Ver [contrato detallado](references/alternativas.md#contrato-de-salidas-del-cli).
+**Comentarios** (`<id>_comentarios.json` y `.csv`): filas con `comment_id`, autor/canal, texto, fecha, likes, respuestas, nivel y `respuesta_a`; JSON con `comentarios_declarados`, `obtenidos`, `parcial`, `motivo_fin`, presupuesto consumido, `hilos_no_expandidos`, `errores`, `error_red` y `bloqueo` (motivo o `null`). Conservar el JSON junto al CSV: el CSV no contiene la cobertura. El fin natural de continuaciones no prueba exhaustividad. Ver [contrato detallado](references/alternativas.md#contrato-de-salidas-del-cli).
 
 ## Detalles que conviene conocer
 
@@ -99,7 +103,7 @@ Para inventariar una lista o canal sin descargar videos, ver [alternativas](refe
 | Respuestas | `--con-respuestas` pagina por hilo dentro del presupuesto compartido; identifica los hilos incompletos, sus motivos y errores. |
 | Transcripción | Se pide la URL firmada que devuelve la pista de subtítulo. Modificarla (agregar `fmt=json3`) no cambia la respuesta: el servidor devuelve XML `timedtext`. |
 | Subtítulos | El video de ejemplo solo tiene subtítulos automáticos (ASR) en ar, en, pt y es. No hay subtítulo manual. |
-| Bloqueos | Si aparece `LOGIN_REQUIRED` con "Sign in to confirm you're not a bot", la IP está bloqueada. No hay modo de sortearlo: usar otra red o `yt-dlp` más tarde. |
+| Bloqueos | HTTP 429 agotado o `LOGIN_REQUIRED` detienen las peticiones y el lote. Este último puede indicar exigencia de sesión o bloqueo de bots; no se evade ni se continúa en bucle. |
 | `PoTokenRequired` | La transcripción puede fallar si la URL de subtítulo exige *proof of origin* token. Es intermitente; `yt-dlp` tiene respaldo. |
 | Videos no disponibles | Se informa el error; en un lote no se abortan las demás entradas y el recibo conserva el fallo. |
 

@@ -475,6 +475,50 @@ class TestCobertura(unittest.TestCase):
         datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
         self.assertEqual(datos["hilos_no_expandidos"][0]["motivo"], "menos_respuestas_declaradas")
 
+    def test_bloqueo_pagina_no_expande_hilos(self):
+        cliente, sesion = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], siguiente="otra", respuestas={"a": "ra"})),
+            FakeRespuesta(429), FakeRespuesta(429),
+        ])
+        with patch.object(Y.time, "sleep"):
+            datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(len(sesion.llamadas), 4)
+        self.assertEqual(datos["bloqueo"], "http_429")
+        self.assertEqual(datos["hilos_no_expandidos"][0]["motivo"], "bloqueo")
+
+    def test_bloqueo_hilo_no_intenta_otro(self):
+        cliente, sesion = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a", "b"], respuestas={"a": "ra", "b": "rb"})),
+            FakeRespuesta(429), FakeRespuesta(429),
+        ])
+        with patch.object(Y.time, "sleep"):
+            datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(len(sesion.llamadas), 4)
+        self.assertEqual(datos["bloqueo"], "http_429")
+        self.assertEqual(datos["hilos_no_expandidos"][1]["motivo"], "bloqueo")
+
+    def test_pagina_invalida_consume_peticion_no_pagina(self):
+        cliente, _ = cliente_comentarios([FakeRespuesta(cuerpo={"error": {"code": 500}})])
+        datos = cliente.comentarios(VIDEO_ID)
+        self.assertEqual(datos["presupuesto"]["peticiones_consumidas"], 1)
+        self.assertEqual(datos["presupuesto"]["paginas_consumidas"], 0)
+
+    def test_429_sin_presupuesto_de_reintento_detiene_cliente(self):
+        cliente, _ = cliente_comentarios([FakeRespuesta(429)])
+        datos = cliente.comentarios(VIDEO_ID, max_peticiones=1)
+        self.assertEqual(datos["motivo_fin"], "max_peticiones")
+        self.assertEqual(datos["bloqueo"], "http_429")
+        self.assertTrue(datos["errores"])
+
+    def test_login_required_en_next_no_expande_hilos(self):
+        cliente, sesion = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], siguiente="otra", respuestas={"a": "ra"})),
+            FakeRespuesta(cuerpo={"playabilityStatus": {"status": "LOGIN_REQUIRED"}}),
+        ])
+        datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(len(sesion.llamadas), 3)
+        self.assertEqual(datos["bloqueo"], "login_required")
+
 
 class TestIdiomasNuevos(unittest.TestCase):
     def test_preferencias_ordenadas_y_tipo(self):
@@ -505,6 +549,7 @@ class TestIdiomasNuevos(unittest.TestCase):
         self.assertEqual((datos["idioma_fuente"], datos["idioma_destino"]), ("en", "es"))
         self.assertEqual(datos["metodo_traduccion"], "traduccion_automatica_youtube_tlang")
         self.assertFalse(datos["traduccion_verificada"])
+        self.assertEqual(datos["idioma"], "en")
 
     def test_pista_no_traducible_no_hace_red(self):
         cliente = self.cliente(False)
@@ -611,6 +656,139 @@ class TestLotesCLI(unittest.TestCase):
             self.assertEqual(self.ejecutar(["metadatos", "--archivo-ids", "no-existe/ids.txt"]), 2)
             self.assertEqual(self.ejecutar(["comentarios", "--url", VIDEO_ID, "--max", "0"]), 2)
             ficha.assert_not_called()
+
+    def test_429_agotado_detiene_lote_y_todo(self):
+        for comando in ("metadatos", "todo"):
+            with self.subTest(comando=comando), tempfile.TemporaryDirectory() as carpeta:
+                sesion = FakeSesion(gets=[FakeRespuesta(429), FakeRespuesta(429)])
+                cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+                with patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(Y.time, "sleep"):
+                    codigo = self.ejecutar([comando, "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+                recibo = json.loads((Path(carpeta) / f"lote_{comando}.json").read_text(encoding="utf-8"))
+                self.assertEqual(codigo, 1)
+                self.assertEqual(len(sesion.llamadas), 2)
+                pendiente = recibo["resultados"][1]
+                self.assertEqual((pendiente["estado"], pendiente["motivo"]), ("no_procesado", "http_429"))
+                self.assertEqual(recibo["resultados"][0]["estado"], "procesado")
+                if comando == "todo":
+                    self.assertEqual(recibo["resultados"][0]["resultado"]["transcripcion"]["estado"], "no_procesado")
+
+    def test_login_required_detiene_desde_watch_y_player(self):
+        bloqueado = {"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": "Sign in to confirm you're not a bot"}}
+        for comando in ("metadatos", "pistas"):
+            with self.subTest(comando=comando), tempfile.TemporaryDirectory() as carpeta:
+                html = '"INNERTUBE_API_KEY":"clave"'
+                if comando == "metadatos":
+                    html += " var ytInitialPlayerResponse = " + json.dumps(bloqueado) + ";"
+                sesion = FakeSesion(gets=[FakeRespuesta(texto=html)], posts=[FakeRespuesta(cuerpo=bloqueado)])
+                cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+                with patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(Y.time, "sleep"):
+                    codigo = self.ejecutar([comando, "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+                recibo = json.loads((Path(carpeta) / f"lote_{comando}.json").read_text(encoding="utf-8"))
+                self.assertEqual(codigo, 1)
+                self.assertEqual(len(sesion.llamadas), 1 if comando == "metadatos" else 2)
+                self.assertEqual(recibo["resultados"][1]["motivo"], "login_required")
+
+    def test_429_comentarios_detiene_siguiente_video(self):
+        cliente, sesion = cliente_comentarios([FakeRespuesta(429), FakeRespuesta(429)])
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+            Y, "ClienteYouTube", return_value=cliente
+        ), patch.object(Y.time, "sleep"):
+            codigo = self.ejecutar(["comentarios", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+            recibo = json.loads((Path(carpeta) / "lote_comentarios.json").read_text(encoding="utf-8"))
+        self.assertEqual(codigo, 1)
+        self.assertEqual(len(sesion.llamadas), 3)
+        self.assertEqual(recibo["resultados"][1]["motivo"], "http_429")
+
+    def test_recibo_conserva_entrada_antes_de_interrupcion(self):
+        for fallo in (KeyboardInterrupt(), TypeError("forma inesperada")):
+            with self.subTest(fallo=type(fallo).__name__), tempfile.TemporaryDirectory() as carpeta:
+                with patch.object(Y.ClienteYouTube, "metadatos", side_effect=fallo), patch.object(Y.time, "sleep"):
+                    with self.assertRaises(type(fallo)):
+                        self.ejecutar(["metadatos", "--url", "invalido", VIDEO_ID, "--out", carpeta])
+                recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+                self.assertEqual(recibo["resultados"][0]["estado"], "procesado")
+                self.assertIn("error", recibo["resultados"][0])
+                self.assertEqual(recibo["resultados"][1]["estado"], "no_procesado")
+
+    def test_recibo_actualizado_antes_de_siguiente_video(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            def metadatos(video_id):
+                if video_id != VIDEO_ID:
+                    recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+                    self.assertEqual(recibo["exitosos"], 1)
+                    self.assertEqual(recibo["resultados"][0]["resultado"]["titulo"], "T")
+                    raise KeyboardInterrupt()
+                return {"titulo": "T"}
+            with patch.object(Y.ClienteYouTube, "metadatos", side_effect=metadatos), patch.object(Y.time, "sleep"):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.ejecutar(["metadatos", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+
+    def test_error_red_paginacion_salida_3_con_parcial(self):
+        for en_hilo in (False, True):
+            pagina = pagina_comentarios(
+                ["a"], siguiente=None if en_hilo else "otra", respuestas={"a": "ra"} if en_hilo else None
+            )
+            cliente, sesion = cliente_comentarios([FakeRespuesta(cuerpo=pagina)])
+            post = sesion.post
+            def solicitar(*args, sesion=sesion, post=post, **kwargs):
+                if sesion.posts:
+                    return post(*args, **kwargs)
+                raise Y.requests.ConnectionError("sin red")
+            with self.subTest(en_hilo=en_hilo), tempfile.TemporaryDirectory() as carpeta, patch.object(
+                Y, "ClienteYouTube", return_value=cliente
+            ), patch.object(sesion, "post", side_effect=solicitar):
+                codigo = self.ejecutar(["comentarios", "--url", VIDEO_ID, "--con-respuestas", "--out", carpeta])
+                datos = json.loads((Path(carpeta) / f"{VIDEO_ID}_comentarios.json").read_text(encoding="utf-8"))
+                self.assertEqual(codigo, 3)
+                self.assertEqual(datos["obtenidos"], 1)
+                self.assertTrue(datos["error_red"])
+
+    def test_error_red_watch_salida_3(self):
+        with patch.object(Y.ClienteYouTube, "pagina_watch", side_effect=Y.requests.ConnectionError("sin red")):
+            self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID]), 3)
+
+    def test_todo_aisla_oserror_y_fallo_del_json_de_error(self):
+        for formato in ("json", "csv"):
+            with self.subTest(formato=formato), tempfile.TemporaryDirectory() as carpeta:
+                escribir_json = Y._escribir_json
+                def escribir(ruta, datos, formato=formato, escribir_json=escribir_json):
+                    if formato == "json" and ruta.name.endswith("_transcripcion.json"):
+                        raise OSError("sin permiso")
+                    escribir_json(ruta, datos)
+                with patch.object(Y, "_escribir_json", side_effect=escribir), patch.object(
+                    Y, "_escribir_csv", side_effect=OSError("disco lleno") if formato == "csv" else None
+                ), patch.object(Y.ClienteYouTube, "metadatos", return_value={"titulo": "T"}), patch.object(
+                    Y.ClienteYouTube, "transcripcion", return_value={"segmentos": []}
+                ), patch.object(Y.ClienteYouTube, "comentarios", return_value={"comentarios": []}):
+                    codigo = self.ejecutar(["todo", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+                recibo = json.loads((Path(carpeta) / "lote_todo.json").read_text(encoding="utf-8"))
+                resultado = recibo["resultados"][0]["resultado"]
+                self.assertEqual(codigo, 1)
+                self.assertEqual(resultado["metadatos"]["titulo"], "T")
+                self.assertIn("error", resultado["transcripcion"])
+                self.assertIn("comentarios", resultado)
+                if formato == "json":
+                    self.assertIn("error_escritura", resultado["transcripcion"])
+
+    def test_recibo_previo_sobrevive_interrupcion_al_reemplazar(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            reemplazar = Path.replace
+            llamadas = 0
+            def interrumpir(ruta, destino):
+                nonlocal llamadas
+                llamadas += 1
+                if llamadas == 3:
+                    raise KeyboardInterrupt()
+                return reemplazar(ruta, destino)
+            with patch.object(Path, "replace", autospec=True, side_effect=interrumpir), patch.object(
+                Y.ClienteYouTube, "metadatos", return_value={"titulo": "T"}
+            ), patch.object(Y.time, "sleep"):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.ejecutar(["metadatos", "--url", "invalido", VIDEO_ID, "--out", carpeta])
+            recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+            self.assertEqual(recibo["resultados"][0]["estado"], "procesado")
+            self.assertEqual(recibo["resultados"][1]["estado"], "no_procesado")
 
 
 if __name__ == "__main__":

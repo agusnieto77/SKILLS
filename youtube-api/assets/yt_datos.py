@@ -66,12 +66,17 @@ class PresupuestoComentarios:
     paginas_consumidas: int = 0
     peticiones_consumidas: int = 0
 
-    def consumir_peticion(self):
+    def consumir_intento_pagina(self):
+        """Comprueba ambos topes antes de cobrar un intento HTTP de pagina."""
         if self.paginas_consumidas >= self.max_paginas:
             raise LimiteComentarios("max_paginas")
         if self.peticiones_consumidas >= self.max_peticiones:
             raise LimiteComentarios("max_peticiones")
         self.peticiones_consumidas += 1
+
+    def registrar_pagina(self):
+        """Cuenta solo respuestas JSON validas; cada intento se cobra por separado."""
+        self.paginas_consumidas += 1
 
     def salida(self, maximo: int) -> dict:
         return {
@@ -82,6 +87,14 @@ class PresupuestoComentarios:
             "peticiones_consumidas": self.peticiones_consumidas,
             "alcance": "youtubei/v1/next; incluye orden, hilos y reintentos; excluye watch/player/timedtext",
         }
+
+
+def _validar_limites_comentarios(maximo: int, max_paginas: int, max_peticiones: int) -> None:
+    if maximo < 1 or not 1 <= max_paginas <= MAX_PAGINAS or not 1 <= max_peticiones <= MAX_PETICIONES:
+        raise YouTubeError(
+            f"Limites: max >= 1, max-paginas entre 1 y {MAX_PAGINAS}, "
+            f"max-peticiones entre 1 y {MAX_PETICIONES}."
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -447,6 +460,8 @@ class ClienteYouTube:
     _html: dict = field(default_factory=dict, repr=False)
     _player: dict = field(default_factory=dict, repr=False)
 
+    bloqueo: str | None = field(default=None, init=False)
+
     def __post_init__(self):
         self.sesion.headers.update(
             {
@@ -456,6 +471,14 @@ class ClienteYouTube:
         )
 
     # -- infraestructura ---------------------------------------------------- #
+    def _bloquear(self, motivo: str):
+        self.bloqueo = motivo
+        raise YouTubeError(f"Recoleccion detenida por bloqueo: {motivo}. No se enviaran mas peticiones.")
+
+    def _comprobar_bloqueo(self, datos: dict):
+        if (datos.get("playabilityStatus") or {}).get("status") == "LOGIN_REQUIRED":
+            self._bloquear("login_required")
+
     @staticmethod
     def _espera_429(respuesta: requests.Response) -> float:
         """Segundos a esperar ante HTTP 429: Retry-After numerico, acotado a 30 s.
@@ -470,21 +493,33 @@ class ClienteYouTube:
         return min(max(espera, 0.0), 30.0)
 
     def _get(self, url: str, **kwargs) -> requests.Response:
+        if self.bloqueo:
+            self._bloquear(self.bloqueo)
         respuesta = self.sesion.get(url, timeout=TIMEOUT, **kwargs)
         if respuesta.status_code == 429:
             time.sleep(self._espera_429(respuesta))
             respuesta = self.sesion.get(url, timeout=TIMEOUT, **kwargs)
+        if respuesta.status_code == 429:
+            self._bloquear("http_429")
         return respuesta
 
     def _post(self, url: str, payload: dict, presupuesto: PresupuestoComentarios | None = None) -> requests.Response:
+        if self.bloqueo:
+            self._bloquear(self.bloqueo)
         if presupuesto:
-            presupuesto.consumir_peticion()
+            presupuesto.consumir_intento_pagina()
         respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
         if respuesta.status_code == 429:
             if presupuesto:
-                presupuesto.consumir_peticion()
+                try:
+                    presupuesto.consumir_intento_pagina()
+                except LimiteComentarios:
+                    self.bloqueo = "http_429"
+                    raise
             time.sleep(self._espera_429(respuesta))
             respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
+        if respuesta.status_code == 429:
+            self._bloquear("http_429")
         return respuesta
 
     # -- paginas publicas ---------------------------------------------------- #
@@ -498,6 +533,7 @@ class ClienteYouTube:
                 f"No se pudo abrir la ficha del video (HTTP {respuesta.status_code}). "
                 "Puede ser un video privado, restringido por edad o eliminado."
             )
+        self._comprobar_bloqueo(extraer_respuesta_player(respuesta.text) or {})
         self._html[video_id] = respuesta.text
         return respuesta.text
 
@@ -527,6 +563,7 @@ class ClienteYouTube:
         if respuesta.status_code != 200:
             raise YouTubeError(f"El reproductor respondio HTTP {respuesta.status_code}")
         datos = respuesta.json()
+        self._comprobar_bloqueo(datos)
         estado = (datos.get("playabilityStatus") or {}).get("status")
         if estado not in (None, "OK"):
             motivo = (datos.get("playabilityStatus") or {}).get("reason") or estado
@@ -543,10 +580,11 @@ class ClienteYouTube:
         datos = respuesta.json()
         if not isinstance(datos, dict):
             raise YouTubeError("youtubei/v1/next no devolvio un objeto JSON.")
+        self._comprobar_bloqueo(datos)
         if datos.get("error"):
             raise YouTubeError(f"youtubei/v1/next devolvio un error: {datos['error']}")
         if presupuesto:
-            presupuesto.paginas_consumidas += 1
+            presupuesto.registrar_pagina()
         return datos
 
     # -- operaciones de alto nivel ------------------------------------------- #
@@ -629,7 +667,7 @@ class ClienteYouTube:
             raise YouTubeError("El archivo de subtitulos venia vacio.")
         return {
             "video_id": video_id,
-            "idioma": tlang or elegida.get("languageCode"),
+            "idioma": elegida.get("languageCode"),
             "idioma_fuente": elegida.get("languageCode"),
             "idioma_destino": tlang or elegida.get("languageCode"),
             "automatica": elegida.get("kind") == "asr",
@@ -671,8 +709,7 @@ class ClienteYouTube:
         orden: str = "newest", max_paginas: int = MAX_PAGINAS, max_peticiones: int = MAX_PETICIONES,
     ) -> dict:
         """Recorre comentarios con presupuesto compartido para orden, paginas y respuestas."""
-        if maximo < 1 or not 1 <= max_paginas <= MAX_PAGINAS or not 1 <= max_peticiones <= MAX_PETICIONES:
-            raise YouTubeError("Limites: max >= 1, max-paginas entre 1 y 60, max-peticiones entre 1 y 120.")
+        _validar_limites_comentarios(maximo, max_paginas, max_peticiones)
         if orden not in {"newest", "top"}:
             raise YouTubeError("El orden debe ser newest o top.")
         presupuesto = PresupuestoComentarios(max_paginas, max_peticiones)
@@ -693,6 +730,7 @@ class ClienteYouTube:
         declarados = None
         motivo = "sin_continuacion"
         errores: list[str] = []
+        error_red = False
         orden_aplicado = False
         while consulta:
             if len(filas) >= maximo:
@@ -707,10 +745,13 @@ class ClienteYouTube:
                 respuesta = self.siguiente(clave, ctx, presupuesto=presupuesto, **consulta)
             except LimiteComentarios as exc:
                 motivo = str(exc)
+                if self.bloqueo:
+                    errores.append(f"Recoleccion detenida por bloqueo: {self.bloqueo}")
                 break
             except (YouTubeError, requests.RequestException, ValueError) as exc:
                 motivo = "error_pagina"
                 errores.append(str(exc))
+                error_red = isinstance(exc, requests.RequestException)
                 time.sleep(self.pausar)
                 break
             items = self._continuaciones_items(respuesta)
@@ -760,6 +801,7 @@ class ClienteYouTube:
             "comentarios_declarados": declarados, "obtenidos": len(filas), "comentarios": filas,
             "parcial": parcial, "motivo_fin": motivo, "presupuesto": presupuesto.salida(maximo),
             "hilos_no_expandidos": pendientes, "errores": errores,
+            "error_red": error_red or respuestas["error_red"], "bloqueo": self.bloqueo,
             "cobertura": "Solo continuaciones publicadas; fin natural no garantiza exhaustividad.",
         }
 
@@ -771,13 +813,16 @@ class ClienteYouTube:
         filas: list[dict] = []
         pendientes: list[dict] = []
         motivo_fin = None
+        error_red = False
         for hilo in hilos:
             actual = hilo["consulta"]
             obtenidas = 0
             error = None
             motivo = None
             tokens: set[str] = set()
-            if not solicitadas:
+            if self.bloqueo:
+                motivo = "bloqueo"
+            elif not solicitadas:
                 motivo = "no_solicitadas"
             elif restantes <= len(filas):
                 motivo = "max_filas"
@@ -793,9 +838,12 @@ class ClienteYouTube:
                     respuesta = self.siguiente(clave, ctx, presupuesto=presupuesto, **actual)
                 except LimiteComentarios as exc:
                     motivo = str(exc)
+                    if self.bloqueo:
+                        error = f"Recoleccion detenida por bloqueo: {self.bloqueo}"
                     break
                 except (YouTubeError, requests.RequestException, ValueError) as exc:
                     motivo, error = "error_hilo", str(exc)
+                    error_red = error_red or isinstance(exc, requests.RequestException)
                     time.sleep(self.pausar)
                     break
                 items = self._continuaciones_items(respuesta)
@@ -828,7 +876,10 @@ class ClienteYouTube:
                 pendientes.append(registro)
                 if solicitadas and motivo_fin is None:
                     motivo_fin = motivo
-        return {"filas": filas, "hilos_no_expandidos": pendientes, "motivo_fin": motivo_fin}
+        return {
+            "filas": filas, "hilos_no_expandidos": pendientes,
+            "motivo_fin": motivo_fin, "error_red": error_red,
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -871,8 +922,10 @@ def _sello() -> str:
 # CLI
 # --------------------------------------------------------------------------- #
 def _arg_comunes(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--url", nargs="+", action="extend", default=[], help="IDs o URLs; repetible, maximo 50 entradas")
-    parser.add_argument("--archivo-ids", type=Path, help="Archivo UTF-8: un ID o URL por linea; maximo 50 entradas")
+    parser.add_argument("--url", nargs="+", action="extend", default=[],
+                        help=f"IDs o URLs; repetible, maximo {MAX_VIDEOS} entradas")
+    parser.add_argument("--archivo-ids", type=Path,
+                        help=f"Archivo UTF-8: un ID o URL por linea; maximo {MAX_VIDEOS} entradas")
     parser.add_argument("--out", default="datos", help="Carpeta de salida (por defecto: datos)")
     parser.add_argument("--json", dest="solo_json", action="store_true", help="No escribir CSV")
 
@@ -885,8 +938,9 @@ def _arg_idiomas(parser: argparse.ArgumentParser) -> None:
 
 def _arg_comentarios(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max", dest="maximo", type=int, default=200, help="Maximo de filas, incluidas respuestas")
-    parser.add_argument("--max-paginas", type=int, default=MAX_PAGINAS, help="Paginas /next por video: 1-60")
-    parser.add_argument("--max-peticiones", type=int, default=MAX_PETICIONES, help="Intentos HTTP /next por video: 1-120")
+    parser.add_argument("--max-paginas", type=int, default=MAX_PAGINAS, help=f"Paginas /next por video: 1-{MAX_PAGINAS}")
+    parser.add_argument("--max-peticiones", type=int, default=MAX_PETICIONES,
+                        help=f"Intentos HTTP /next por video: 1-{MAX_PETICIONES}")
     parser.add_argument("--con-respuestas", action="store_true")
     parser.add_argument("--orden", choices=["newest", "top"], default="newest",
                         help="newest: mas recientes; top: jerarquia de interfaz; ninguno garantiza exhaustividad")
@@ -895,7 +949,7 @@ def _arg_comentarios(parser: argparse.ArgumentParser) -> None:
 def _entradas(args: argparse.Namespace) -> list[str]:
     entradas = list(args.url)
     if len(entradas) > MAX_VIDEOS:
-        raise YouTubeError("El lote admite como maximo 50 entradas.")
+        raise YouTubeError(f"El lote admite como maximo {MAX_VIDEOS} entradas.")
     if args.archivo_ids:
         with args.archivo_ids.open(encoding="utf-8-sig") as archivo:
             for linea in archivo:
@@ -903,7 +957,7 @@ def _entradas(args: argparse.Namespace) -> list[str]:
                 if valor and not valor.startswith("#"):
                     entradas.append(valor)
                     if len(entradas) > MAX_VIDEOS:
-                        raise YouTubeError("El lote admite como maximo 50 entradas.")
+                        raise YouTubeError(f"El lote admite como maximo {MAX_VIDEOS} entradas.")
     if not entradas:
         raise YouTubeError("Indicar --url o --archivo-ids con al menos una entrada.")
     return entradas
@@ -938,12 +992,21 @@ def _ejecutar_video(cliente: ClienteYouTube, video_id: str, args: argparse.Names
         return _operacion(cliente, video_id, args.comando, args)
     resultado = {"video_id": video_id}
     for comando in ("metadatos", "transcripcion", "comentarios"):
+        if cliente.bloqueo:
+            resultado[comando] = {
+                "estado": "no_procesado", "motivo": cliente.bloqueo,
+                "error": f"Operacion no procesada por bloqueo: {cliente.bloqueo}",
+            }
+            continue
         try:
             resultado[comando] = _operacion(cliente, video_id, comando, args)
-        except (YouTubeError, requests.RequestException, ValueError) as exc:
+        except (YouTubeError, requests.RequestException, ValueError, OSError) as exc:
             error = {"video_id": video_id, "error": str(exc), "capturado_en_utc": _sello()}
             resultado[comando] = error
-            _escribir_json(Path(args.out) / f"{video_id}_{comando}.json", error)
+            try:
+                _escribir_json(Path(args.out) / f"{video_id}_{comando}.json", error)
+            except OSError as escritura:
+                error["error_escritura"] = str(escritura)
     return resultado
 
 
@@ -956,6 +1019,19 @@ def _errores_resultado(datos: dict) -> list[str]:
         if isinstance(datos.get(comando), dict):
             errores.extend(_errores_resultado(datos[comando]))
     return errores
+
+
+def _guardar_recibo(args: argparse.Namespace, resultados: list[dict]) -> dict:
+    recibo = {
+        "comando": args.comando, "capturado_en_utc": _sello(), "max_videos": MAX_VIDEOS,
+        "total": len(resultados), "exitosos": sum(r["ok"] for r in resultados), "resultados": resultados,
+        "metodo": "Lectura publica anonima; procesamiento secuencial, sin evasion de bloqueos",
+    }
+    ruta = Path(args.out) / f"lote_{args.comando}.json"
+    temporal = ruta.with_suffix(".json.tmp")
+    _escribir_json(temporal, recibo)
+    temporal.replace(ruta)
+    return recibo
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -971,53 +1047,59 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         entradas = _entradas(args)
-        if args.comando in {"comentarios", "todo"} and (
-            args.maximo < 1 or not 1 <= args.max_paginas <= MAX_PAGINAS
-            or not 1 <= args.max_peticiones <= MAX_PETICIONES
-        ):
-            raise YouTubeError("Limites: max >= 1, max-paginas 1-60, max-peticiones 1-120.")
+        if args.comando in {"comentarios", "todo"}:
+            _validar_limites_comentarios(args.maximo, args.max_paginas, args.max_peticiones)
     except (YouTubeError, OSError, UnicodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     lote = len(entradas) > 1 or args.archivo_ids is not None
     cliente = ClienteYouTube()
-    resultados = []
-    for posicion, entrada in enumerate(entradas, 1):
-        registro = {"posicion": posicion, "entrada": entrada}
-        try:
-            video_id = extraer_id_video(entrada)
-        except YouTubeError as exc:
-            if not lote:
-                print(f"error: {exc}", file=sys.stderr)
-                return 2
-            registro.update(ok=False, error=str(exc))
-            resultados.append(registro)
-            continue
-        registro["video_id"] = video_id
-        try:
-            datos = _ejecutar_video(cliente, video_id, args)
-            errores = _errores_resultado(datos)
-            registro.update(ok=not errores, resultado=datos)
-            if errores:
-                registro["error"] = "; ".join(errores)
-            if not lote:
-                print(json.dumps(datos, ensure_ascii=False, indent=2))
-                return 1 if errores else 0
-        except (YouTubeError, requests.RequestException, ValueError, OSError) as exc:
-            registro.update(ok=False, error=str(exc))
-            if not lote:
-                print(f"error: {exc}", file=sys.stderr)
-                return 3 if isinstance(exc, requests.RequestException) else 1
-        resultados.append(registro)
-        if posicion < len(entradas):
-            time.sleep(cliente.pausar)
-    recibo = {
-        "comando": args.comando, "capturado_en_utc": _sello(), "max_videos": MAX_VIDEOS,
-        "total": len(resultados), "exitosos": sum(r["ok"] for r in resultados), "resultados": resultados,
-        "metodo": "Lectura publica anonima; procesamiento secuencial, sin evasion de bloqueos",
-    }
+    resultados = [
+        {"posicion": posicion, "entrada": entrada, "ok": False, "estado": "no_procesado", "motivo": "pendiente"}
+        for posicion, entrada in enumerate(entradas, 1)
+    ]
     try:
-        _escribir_json(Path(args.out) / f"lote_{args.comando}.json", recibo)
+        if lote:
+            recibo = _guardar_recibo(args, resultados)
+        for registro in resultados:
+            posicion, entrada = registro["posicion"], registro["entrada"]
+            try:
+                video_id = extraer_id_video(entrada)
+            except YouTubeError as exc:
+                if not lote:
+                    print(f"error: {exc}", file=sys.stderr)
+                    return 2
+                registro.update(error=str(exc))
+            else:
+                registro["video_id"] = video_id
+                try:
+                    datos = _ejecutar_video(cliente, video_id, args)
+                    errores = _errores_resultado(datos)
+                    registro.update(ok=not errores, resultado=datos)
+                    if errores:
+                        registro["error"] = "; ".join(errores)
+                    if not lote:
+                        print(json.dumps(datos, ensure_ascii=False, indent=2))
+                        if args.comando != "todo" and datos.get("error_red"):
+                            return 3
+                        return 1 if errores else 0
+                except (YouTubeError, requests.RequestException, ValueError, OSError) as exc:
+                    registro.update(error=str(exc))
+                    if not lote:
+                        print(f"error: {exc}", file=sys.stderr)
+                        return 3 if isinstance(exc, requests.RequestException) else 1
+            registro["estado"] = "procesado"
+            registro.pop("motivo")
+            if cliente.bloqueo:
+                registro["bloqueo"] = cliente.bloqueo
+                for pendiente in resultados[posicion:]:
+                    pendiente["motivo"] = cliente.bloqueo
+            if lote:
+                recibo = _guardar_recibo(args, resultados)
+            if cliente.bloqueo:
+                break
+            if posicion < len(entradas):
+                time.sleep(cliente.pausar)
     except OSError as exc:
         print(f"error al escribir recibo: {exc}", file=sys.stderr)
         return 1

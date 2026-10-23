@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 — 2026-10-22
+
+- Interrupción del lote y de las operaciones/hilos pendientes ante HTTP 429 agotado o `LOGIN_REQUIRED`; recibo con entradas no procesadas y motivo explícito.
+- Recibo inicial e incremental con reemplazo atómico después de cada entrada: una interrupción conserva la última actualización completa.
+- Código de salida 3 uniforme para errores de transporte en operaciones únicas, incluidas páginas y respuestas de comentarios; conserva la salida parcial con `error_red`.
+- `todo` aísla también `OSError` de JSON/CSV y fallos al guardar el propio JSON de error, sin perder otros resultados.
+- Validación de límites compartida entre CLI y cliente, mensajes derivados de las constantes y contabilidad de páginas localizada en el presupuesto.
+- Compatibilidad de transcripción: `idioma` vuelve a conservar la pista fuente; `idioma_destino` identifica la traducción solicitada.
+- Regresiones offline para bloqueos, recibos interrumpidos, errores de red/escritura y semántica del idioma; sin nuevas capturas de YouTube.
+
 ## 1.2 — 2026-10-22
 
 - Cobertura de comentarios estructurada: `parcial`, `motivo_fin`, presupuesto compartido por orden/padres/respuestas, hilos no expandidos y errores por hilo; sin descarte silencioso de errores.
