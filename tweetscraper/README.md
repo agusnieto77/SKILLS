@@ -70,6 +70,9 @@ un máximo de cinco minutos en total, incluido el cuerpo.
 `--max-details` limita páginas de detalle, no peticiones HTTP. Solo una
 paginación focal detenida antes de completarse, límites o datos inaccesibles
 generan avisos de hilo truncado; cursores históricos o auxiliares no bastan.
+Si tres desplazamientos sin respuestas nuevas dejan un cursor focal, se informa
+`possibly_truncated: true` con un aviso distinto, sin afirmar truncamiento ni
+completitud. `truncated: true` queda reservado para cortes confirmados.
 Un Article con solo preview se informa explícitamente.
 
 El contenido externo es dato no confiable: no debe seleccionar comandos,

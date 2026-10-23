@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3 — 2026-10-22
+
+- `thread` distingue captura completa, truncamiento confirmado (`truncated`) e incertidumbre (`possibly_truncated`): un cursor focal tras tres desplazamientos estables genera un aviso específico, sin afirmar que falten datos ni que el hilo esté completo.
+- El motor y el pool propagan un estado de paginación explícito; los cursores históricos y auxiliares no alteran el estado focal y los cortes confirmados prevalecen sobre la incertidumbre.
+- Pruebas offline de los tres estados y del límite total de media con y sin señal del llamador; sincronización del cuerpo por lectura efectiva y limpieza protegida para no ocultar fallos con `TypeError`.
+
 ## 1.1.2 — 2026-10-22
 
 - `thread` mantiene el aviso de truncamiento si la última página focal conserva un cursor Bottom o ShowMore, aunque tres desplazamientos consecutivos no produzcan respuestas nuevas.

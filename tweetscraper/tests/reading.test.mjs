@@ -35,7 +35,7 @@ function harvested(ctx, pages, pagination = {}) {
     const id = collect.statusId(p.urls[0]) ?? '800';
     const page = pages[id] ?? doc([]);
     return { results: [{ docs: (Array.isArray(page) ? page : [page]).map((d) => ({ doc: d })),
-      count: 1, paginationStoppedEarly: pagination[id] ?? false }], rateLimits: {}, stopped: null };
+      count: 1, paginationState: pagination[id] ?? 'complete' }], rateLimits: {}, stopped: null };
   };
   return calls;
 }
@@ -129,23 +129,48 @@ test('thread ignores historical cursors after completed focal pagination', async
   assert.deepEqual(ctx.warnings, []);
 });
 
-test('thread ignores cursors on ancestor and continuation lookup pages', async () => {
-  const ctx = context();
-  const ancestor = doc([rawTweet('2')]);
-  ancestor.data.instructions[0].entries.push({ content: { cursorType: 'ShowMore', value: 'UNRELATED' } });
-  harvested(ctx, { 3: doc([rawTweet('3', '2'), rawTweet('4', '3')]),
-    2: ancestor, 4: doc([rawTweet('4', '3')], 'OTHER_REPLIES') }, { 2: true, 4: true });
-  const result = await collect.thread(ctx, '3', 20);
-  assert.equal(result.meta.truncated, false);
-  assert.deepEqual(ctx.warnings, []);
-});
+for (const lookupState of ['truncated', 'uncertain']) {
+  test('thread ignores auxiliary lookup pagination state ' + lookupState, async () => {
+    const ctx = context();
+    const ancestor = doc([rawTweet('2')]);
+    ancestor.data.instructions[0].entries.push({ content: { cursorType: 'ShowMore', value: 'UNRELATED' } });
+    harvested(ctx, { 3: doc([rawTweet('3', '2'), rawTweet('4', '3')]),
+      2: ancestor, 4: doc([rawTweet('4', '3')], 'OTHER_REPLIES') }, { 2: lookupState, 4: lookupState });
+    const result = await collect.thread(ctx, '3', 20);
+    assert.equal(result.meta.truncated, false);
+    assert.equal(result.meta.possibly_truncated, false);
+    assert.deepEqual(ctx.warnings, []);
+  });
+}
 
 test('thread reports an actual early pagination stop for the focal conversation', async () => {
   const ctx = context();
-  harvested(ctx, { 3: doc([rawTweet('3')], 'PENDING') }, { 3: true });
+  harvested(ctx, { 3: doc([rawTweet('3')], 'PENDING') }, { 3: 'truncated' });
   const result = await collect.thread(ctx, '3', 20);
   assert.equal(result.meta.truncated, true);
   assert.match(ctx.warnings.join('\n'), /truncado/);
+});
+
+for (const [state, truncated, possiblyTruncated] of [['complete', false, false], ['uncertain', false, true], ['truncated', true, false]]) {
+  test('thread exposes distinct completeness flags and warning for ' + state, async () => {
+    const ctx = context();
+    harvested(ctx, { 3: doc([rawTweet('3')]) }, { 3: state });
+    const result = await collect.thread(ctx, '3', 20);
+    assert.equal(result.meta.truncated, truncated);
+    assert.equal(result.meta.possibly_truncated, possiblyTruncated);
+    assert.equal(ctx.warnings.some((message) => /^Hilo truncado:/.test(message)), truncated);
+    assert.equal(ctx.warnings.some((message) => /^Hilo posiblemente truncado:/.test(message)), possiblyTruncated);
+  });
+}
+
+test('thread confirmed truncation takes precedence over uncertain focal pagination', async () => {
+  const ctx = context();
+  harvested(ctx, { 3: doc([rawTweet('3', '2')]) }, { 3: 'uncertain' });
+  const result = await collect.thread(ctx, '3', 20, { maxDetails: 1 });
+  assert.equal(result.meta.truncated, true);
+  assert.equal(result.meta.possibly_truncated, false);
+  assert.match(ctx.warnings.join('\n'), /Hilo truncado:/);
+  assert.doesNotMatch(ctx.warnings.join('\n'), /Hilo posiblemente truncado:/);
 });
 
 for (const [stopped, stoppedAt, truncated] of [['interrupted', 0, true], ['interrupted', 1, false], ['rate_limited', 0, true]]) {
@@ -182,7 +207,8 @@ for (const mode of ['completed', 'stable', 'stable-show-more', 'limit', 'target'
     }));
     const result = await harvest({ urls: ['https://x.com/i/status/3'], opNames: ['TweetDetail'],
       maxScrolls: mode === 'limit' || mode === 'show-more' ? 1 : 6, targets: mode === 'target' ? [1] : [] });
-    assert.equal(result.results[0].paginationStoppedEarly, mode !== 'completed');
+    const expectedState = mode === 'completed' ? 'complete' : mode.startsWith('stable') ? 'uncertain' : 'truncated';
+    assert.equal(result.results[0].paginationState, expectedState);
     assert.equal(result.results[0].docs.length, mode === 'completed' ? 2 : 1);
   });
 }
@@ -312,37 +338,41 @@ test('media header timeout is cleared before reading a slow response body', asyn
   assert.deepEqual(result.warnings, []);
 });
 
-test('media overall deadline aborts stalled bodies without a caller signal and continues exporting', async (t) => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-deadline-'));
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  let releaseBody;
-  let finished = false;
-  const output = path.join(tmp, 'note.md');
-  const pending = io.writeMarkdown(output, [{ media: ['https://pbs.twimg.com/stall', 'https://pbs.twimg.com/ok'] }], {
-    downloadMedia: true,
-    fetch: async (url, { signal }) => new Response(url.endsWith('/ok') ? 'abc' : new ReadableStream({
-      start(stream) {
-        releaseBody = () => stream.close();
-        signal.addEventListener('abort', () => stream.error(signal.reason), { once: true });
-      },
-    }), { headers: { 'content-type': 'image/jpeg' } }),
-  }).then((result) => { finished = true; return result; });
-  try {
-    await new Promise((resolve) => setImmediate(resolve));
-    t.mock.timers.tick(300001);
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(finished, true, 'el cuerpo detenido debe finalizar por el límite total');
-    const result = await pending;
-    assert.equal(result.downloaded, 1);
-    assert.equal(result.warnings.length, 1);
-    assert.match(result.warnings[0], /tiempo.*descarga/i);
-    assert.match(fs.readFileSync(output, 'utf8'), /!\[media\]\(note_media\//);
-    assert.equal(fs.readdirSync(path.join(tmp, 'note_media')).length, 1);
-  } finally {
-    if (!finished) releaseBody();
-    await pending;
-  }
-});
+for (const withCallerSignal of [false, true]) {
+  test(`media deadline with caller signal ${withCallerSignal} warns and continues exporting`, { timeout: 2000 }, async (t) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tws-deadline-'));
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const controller = withCallerSignal ? new AbortController() : null;
+    const bodyReady = Promise.withResolvers();
+    let releaseBody;
+    let finished = false;
+    const output = path.join(tmp, 'note.md');
+    const pending = io.writeMarkdown(output, [{ media: ['https://pbs.twimg.com/stall', 'https://pbs.twimg.com/ok'] }], {
+      downloadMedia: true, signal: controller?.signal,
+      fetch: async (url, { signal }) => new Response(url.endsWith('/ok') ? 'abc' : new ReadableStream({
+        start(stream) {
+          releaseBody = () => { if (!signal.aborted) stream.close(); };
+          signal.addEventListener('abort', () => stream.error(signal.reason), { once: true });
+        },
+        pull() { bodyReady.resolve(); },
+      }, { highWaterMark: 0 }), { headers: { 'content-type': 'image/jpeg' } }),
+    }).then((result) => { finished = true; return result; });
+    try {
+      await bodyReady.promise;
+      t.mock.timers.tick(300001);
+      const result = await pending;
+      assert.equal(result.downloaded, 1);
+      assert.equal(result.warnings.length, 1);
+      assert.match(result.warnings[0], /tiempo.*descarga/i);
+      assert.equal(controller?.signal.aborted ?? false, false);
+      assert.match(fs.readFileSync(output, 'utf8'), /!\[media\]\(note_media\//);
+      assert.equal(fs.readdirSync(path.join(tmp, 'note_media')).length, 1);
+    } finally {
+      if (!finished) releaseBody?.();
+      await pending;
+    }
+  });
+}
 
 test('Articles preserve title, cover, blocks, links and media without confusing note_tweet or preview', () => {
   const tr = rawTweet('10');

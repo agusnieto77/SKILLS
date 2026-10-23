@@ -127,7 +127,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * pool account and resumes from that URL. `cursors[k]` is injected into the
  * first request of the app so pagination resumes where it stopped.
  *
- * Returns { results: [{url, docs, cursor, count, paginationStoppedEarly}], rateLimits, stopped, stoppedOp, stoppedAt, detail }.
+ * Each result has {url, docs, cursor, count, paginationState}: complete, uncertain or truncated.
+ * Returns {results, rateLimits, stopped, stoppedOp, stoppedAt, detail}.
  */
 export async function harvest(p) {
   const {
@@ -161,6 +162,7 @@ export async function harvest(p) {
       let found = 0;
       let cursor = null;
       let paginationPending = false;
+      let stableEnd = false;
       let page;
       try {
         page = await context.newPage();
@@ -245,13 +247,15 @@ export async function harvest(p) {
           await page.mouse.wheel(0, scrollPx);
           await page.waitForTimeout(waitMs);
           if (docs.length === before) {
-            if (++stable >= 3) break;
+            if (++stable >= 3) { stableEnd = true; break; }
           } else stable = 0;
         }
       } catch (e) {
         if (!signal?.aborted) throw e;
       }
-      results.push({ url, docs, cursor, count: found, paginationStoppedEarly: paginationPending });
+      const paginationState = stop || signal?.aborted ? 'truncated' :
+        !paginationPending ? 'complete' : stableEnd ? 'uncertain' : 'truncated';
+      results.push({ url, docs, cursor, count: found, paginationState });
       if (signal?.aborted) {
         stop = stop || { reason: 'interrupted', op: null, at: k + 1, detail: null };
         break;

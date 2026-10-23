@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Node.js >= 22.13 con npm; Chromium lo descarga Playwright en `install`. Funciona en cualquier cliente de Agent Skills con shell.
 metadata:
   author: Agustín Nieto
-  version: "1.1.2"
+  version: "1.1.3"
   based_on: TweetScraperR 0.8.1.9000 (https://github.com/agusnieto77/TweetScraperR)
 ---
 
@@ -120,7 +120,7 @@ proveedor: Chromium no admite SOCKS5 con usuario y clave.
 | Timeline combinado de varias cuentas | `TS timelines NASA ESA -n 40` (n por cuenta; `--users-file`) (`getTweetsTimelinesAPI`) |
 | Buscar por palabra, hashtag, cuenta, idioma o fechas | `TS search "#RStats lang:es" -n 40 --product Latest --since 2026-01-01 --until 2026-02-01` (`getTweetsSearchAPI`) |
 | Seguir una búsqueda en vivo | `TS live "#RStats" --interval 300 --duration 3600` (`getTweetsLiveAPI`) |
-| Conversación / hilo reconstruido | `TS replies <url> -n 40` / `TS thread <url> -n 40 --max-details 10` (roles, raíz, truncamiento) |
+| Conversación / hilo reconstruido | `TS replies <url> -n 40` / `TS thread <url> -n 40 --max-details 10` (roles, raíz; distinguir `truncated` de `possibly_truncated`) |
 | Datos de tweets puntuales por URL | `TS tweets <url> [<url>...]` o `--urls-file` (`getTweetsDataAPI`) |
 | Tweet público sin sesión | `TS public-tweet <url>` (terceros, resultado degradado) |
 | Article (no confundir con tweet largo) | `TS article <url-del-article-o-tweet>`; solo preview si no hay cuerpo accesible |

@@ -38,7 +38,17 @@ Las 31 columnas de tweets permanecen intactas; solo este comando agrega `rol`:
 `continuacion` (autorrespuestas conectadas del autor focal) o `respuesta`
 (otras respuestas recolectadas). Filas deduplicadas por `tweet_id` y ordenadas
 por `fecha`, con ID como desempate. En stdout: `requested_id`, `root_id`,
-`truncated`, `details` y `warnings`. La raíz conocida no implica cuerpo completo.
+`truncated`, `possibly_truncated`, `details` y `warnings`. La raíz conocida no implica cuerpo completo.
+
+| `truncated` | `possibly_truncated` | Estado de la captura |
+|---|---|---|
+| `true` | `false` | Truncado: corte, límite o dato necesario inaccesible; aviso «Hilo truncado». |
+| `false` | `true` | Posiblemente truncado: cursor Bottom/ShowMore focal tras tres desplazamientos sin respuestas nuevas; puede ser terminal, no se confirma truncamiento ni completitud. |
+| `false` | `false` | Completo según la captura: sin cursor pendiente ni corte conocido. |
+
+Los campos son booleanos y nunca son ambos `true`: un corte confirmado prevalece
+sobre la incertidumbre. Los cursores de páginas anteriores o de consultas auxiliares
+no determinan el estado de la paginación focal.
 
 ## Articles (`article`, entidad separada)
 

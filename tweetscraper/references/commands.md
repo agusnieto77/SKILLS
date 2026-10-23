@@ -27,7 +27,7 @@
 | `replies <url> [-n 40]` | TweetDetail | Tweet + respuestas (hilos `conversationthread`). |
 | `tweets <url...> [--urls-file F]` | TweetDetail | Solo el tweet focal de cada URL; avisa las que no se pudieron traer. |
 | `public-tweet <url\|id>` | Ninguna (sin sesión) | FxTwitter → syndication; un tweet, mismas 31 columnas. `provider` y `degraded: true` en stdout; campos no disponibles = `null`. |
-| `thread <url\|id> [-n 40] [--max-details 10]` | TweetDetail | Antecedentes, focal, continuación del autor y otras respuestas; orden cronológico, deduplicado. `requested_id`, `root_id`, `truncated`, `details` en stdout; columna adicional `rol`. |
+| `thread <url\|id> [-n 40] [--max-details 10]` | TweetDetail | Antecedentes, focal, continuación del autor y otras respuestas; orden cronológico, deduplicado. `requested_id`, `root_id`, `truncated`, `possibly_truncated`, `details` en stdout; columna adicional `rol`. |
 | `article <url-del-article-o-tweet>` | ArticleEntityResultByRestId / TweetResultByRestId / TweetDetail | Entidad separada: título, portada, bloques, enlaces, media y estado del cuerpo. `-o articulo.md` exporta directamente. Requiere sesión. |
 | `list-tweets <id\|url> [-n 40]` | ListLatestTweetsTimeline | |
 
@@ -49,14 +49,21 @@ respuestas; `--max-details` limita **colecciones de páginas TweetDetail**, no
 peticiones HTTP: cada página puede paginar y el pool puede rotar cuentas.
 Los antecedentes tienen prioridad frente a continuación y otras respuestas
 cuando se alcanza `-n`. Cada grupo se identifica por `rol`; el archivo queda
-en orden cronológico. Una paginación del focal detenida antes de completarse,
-límites, padres inaccesibles e interrupciones generan `truncated: true` y
-advertencias. Los cursores de páginas anteriores, de una paginación completada
-o de consultas auxiliares no bastan para marcar truncamiento. La raíz puede ser
+en orden cronológico. El estado de completitud tiene tres posibilidades:
+
+- `truncated: true`, `possibly_truncated: false`: corte confirmado por límites,
+  interrupción, cuota agotada, timeout o antecedente inaccesible; aviso «Hilo truncado».
+- `truncated: false`, `possibly_truncated: true`: tres desplazamientos sin
+  respuestas nuevas dejan un cursor Bottom/ShowMore en la última página focal.
+  Ese cursor puede ser terminal o esconder datos: el aviso «Hilo posiblemente
+  truncado» no afirma truncamiento ni completitud.
+- Ambos campos en `false`: paginación completa según la captura, sin cursor
+  pendiente ni corte conocido.
+
+Los cursores históricos o de consultas auxiliares no determinan el estado del
+focal. Un corte confirmado prevalece sobre la incertidumbre. La raíz puede ser
 conocida por `conversation_id` aunque no se haya podido recuperar su texto.
-Si el desplazamiento deja de producir respuestas pero la última página focal
-conserva un cursor Bottom o ShowMore, la paginación sigue pendiente.
-No interpretar un resultado parcial como hilo completo.
+No interpretar un resultado parcial o incierto como hilo completo.
 
 `article` acepta `https://x.com/i/article/<id>` o el tweet que lo contiene.
 Si el tweet solo incluye un adelanto/enlace, abre también la página del Article

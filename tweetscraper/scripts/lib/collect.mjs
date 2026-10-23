@@ -110,7 +110,7 @@ export async function harvestPool(ctx, urls, opNames, { maxScrolls = 25, n = nul
       nResp += r.docs.length;
       found[j] += r.count;
       if (r.cursor) cursors[j] = r.cursor;
-      if (pagination) pagination[j] = !!r.paginationStoppedEarly || (!!res.stopped && res.stoppedAt === i);
+      if (pagination) pagination[j] = res.stopped && res.stoppedAt === i ? 'truncated' : r.paginationState;
     });
     const rl = res.rateLimits[op];
     const stopped = res.stopped;
@@ -303,6 +303,7 @@ export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
   const byId = new Map();
   const pending = [requestedId];
   let truncated = false;
+  let possiblyTruncated = false;
   while (pending.length && seen.size < maxDetails && !ctx.signal?.aborted) {
     const id = pending.shift();
     if (seen.has(id)) continue;
@@ -319,7 +320,10 @@ export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
       break;
     }
     for (const row of tweetsOf(docs)) byId.set(row.tweet_id, row);
-    if (id === requestedId && pagination[0]) truncated = true;
+    if (id === requestedId) {
+      truncated ||= pagination[0] === 'truncated';
+      possiblyTruncated = pagination[0] === 'uncertain';
+    }
     if (!byId.has(requestedId)) throw new CollectError('No se pudo recuperar el tweet focal.');
     const classified = reconstructThread([...byId.values()], requestedId);
     if (classified.missingParent && !seen.has(classified.missingParent)) pending.unshift(classified.missingParent);
@@ -334,9 +338,10 @@ export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
   const priority = { focal: 0, antecedente: 1, continuacion: 2, respuesta: 3 };
   const selected = new Set([...classified.rows].sort((a, b) => priority[a.rol] - priority[b.rol]).slice(0, n).map((r) => r.tweet_id));
   const rows = classified.rows.filter((r) => selected.has(r.tweet_id));
-  if (truncated) ctx.warn('Hilo truncado: límite, cursor pendiente, interrupción o antecedente inaccesible; no se garantiza completitud.');
+  if (truncated) ctx.warn('Hilo truncado: límite, interrupción o antecedente inaccesible; no se garantiza completitud.');
+  else if (possiblyTruncated) ctx.warn('Hilo posiblemente truncado: cursor focal Bottom/ShowMore tras tres desplazamientos sin respuestas nuevas; no se puede confirmar completitud ni truncamiento.');
   return { rows, prefix: 'api_thread_' + requestedId,
-    meta: { requested_id: requestedId, root_id: classified.rootId, truncated, details: seen.size } };
+    meta: { requested_id: requestedId, root_id: classified.rootId, truncated, possibly_truncated: !truncated && possiblyTruncated, details: seen.size } };
 }
 
 const ARTICLE_OPS = ['ArticleEntityResultByRestId', 'TweetResultByRestId', 'TweetDetail'];
