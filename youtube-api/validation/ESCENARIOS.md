@@ -31,14 +31,19 @@ Criterios reproducibles para revisar el CLI y sus documentos. No afirma ejecuci�
 | Lote por URLs/archivo con entrada inválida | resultado/error independiente y posición; los válidos posteriores se procesan |
 | Error de red por video | no aborta las restantes entradas del lote |
 | Más de 50 entradas | rechazo antes de toda petición; no truncamiento silencioso |
-| HTTP 429 agotado o `LOGIN_REQUIRED` con evidencia explícita de bot en watch/player/next | detiene lote, operaciones de `todo` e hilos pendientes; registra `no_procesado` con motivo en las entradas restantes |
+| HTTP 429 agotado o `LOGIN_REQUIRED` sin restricción por video identificada | detiene lote, operaciones de `todo` e hilos pendientes; registra `no_procesado` con motivo en las entradas restantes |
 | Interrupción o excepción inesperada durante el lote | conserva el recibo de las entradas terminadas y las pendientes; interrumpir el reemplazo no trunca el recibo anterior |
 | Error de red paginando comentarios o respuestas | operación única devuelve 3, conserva filas y `error_red=true`; `todo` y lotes devuelven 1 |
 | `OSError` de salida JSON/CSV en `todo` | conserva resultados de otras operaciones; un segundo fallo en el JSON de error queda como `error_escritura` |
-| `LOGIN_REQUIRED` por edad, privado o motivo desconocido | informa error de ese video; procesa entradas posteriores sin marcar bloqueo del cliente |
+| `LOGIN_REQUIRED` con señal positiva de edad, privado o membresía | informa error de ese video; puede continuar con entradas posteriores, salvo dos `LOGIN_REQUIRED` consecutivos |
 | Fallo transitorio del recibo inicial/intermedio | emite advertencia, procesa todas las entradas y reintenta el guardado; limpia el temporal cuando es posible |
 | Fallo del recibo final | procesa las entradas, pero devuelve 1 si no puede guardar el recibo final |
 | HTTP 200 no JSON en página, hilo o player | salida 1, no 3; comentarios conserva filas y `error_red=false` |
+| `LOGIN_REQUIRED` vacío, desconocido o de idioma no reconocido | detiene el cliente por seguridad; no solicita el siguiente video |
+| Dos entradas consecutivas con `LOGIN_REQUIRED` por restricción del video | detiene inmediatamente el lote; `todo` cuenta una vez por entrada y omite operaciones restantes del segundo video |
+| `LOGIN_REQUIRED` separados por una entrada sin ese estado | reinicia la cuenta; no dispara el corte por repetición |
+| requests sin `exceptions.JSONDecodeError` | clasifica transporte sin `AttributeError`, conserva el código 3 para errores de conexión |
+| Estado de persistencia de recibo | `_guardar_recibo` devuelve `(recibo, persistido)`; falso ante fallo intermedio y verdadero tras reemplazo exitoso |
 
 ## Pruebas de red (requieren internet y una IP no bloqueada)
 

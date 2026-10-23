@@ -49,6 +49,15 @@ CLIENT_WEB = {"clientName": "WEB", "clientVersion": "2.20240101.00.00"}
 MAX_VIDEOS = 50
 MAX_PAGINAS = 60
 MAX_PETICIONES = 120  # Intentos HTTP de /next, incluidos los reintentos 429.
+MAX_LOGIN_CONSECUTIVOS = 2  # Entradas del lote, no operaciones de `todo`.
+ESTADOS_RESTRICCION_VIDEO = {"AGE_CHECK_REQUIRED", "CONTENT_CHECK_REQUIRED"}
+RENDERERS_RESTRICCION_VIDEO = {"playerAgeGateRenderer", "playerAgeGateContentRenderer"}
+ICONOS_RESTRICCION_VIDEO = {"PRIVACY_PRIVATE"}
+# Respaldo heuristico y dependiente del idioma; sin senal positiva se detiene el cliente.
+MARCAS_RESTRICCION_VIDEO = (
+    "confirm your age", "age-restricted", "private video", "members-only",
+    "confirmar tu edad", "confirma tu edad", "video privado", "vídeo privado", "solo para miembros",
+)
 
 
 class YouTubeError(RuntimeError):
@@ -65,7 +74,8 @@ def _mensaje_bloqueo(motivo: str) -> str:
 
 def _es_error_red(error: Exception) -> bool:
     """JSONDecodeError de requests hereda de RequestException, pero no es transporte."""
-    return isinstance(error, requests.RequestException) and not isinstance(error, requests.exceptions.JSONDecodeError)
+    error_json = getattr(requests.exceptions, "JSONDecodeError", json.JSONDecodeError)
+    return isinstance(error, requests.RequestException) and not isinstance(error, error_json)
 
 
 @dataclass
@@ -470,6 +480,8 @@ class ClienteYouTube:
     _player: dict = field(default_factory=dict, repr=False)
 
     bloqueo: str | None = field(default=None, init=False)
+    login_requerido: bool = field(default=False, init=False)
+    login_consecutivos: int = field(default=0, init=False)
 
     def __post_init__(self):
         self.sesion.headers.update(
@@ -480,23 +492,39 @@ class ClienteYouTube:
         )
 
     # -- infraestructura ---------------------------------------------------- #
-    def _bloquear(self, motivo: str):
+    def _error_bloqueo(self, motivo: str) -> YouTubeError:
         self.bloqueo = motivo
-        raise YouTubeError(_mensaje_bloqueo(motivo))
+        return YouTubeError(_mensaje_bloqueo(motivo))
 
-    def _comprobar_bloqueo(self, datos: dict):
+    def _validar_reproducibilidad(self, datos: dict) -> None:
+        """Distingue restricciones positivas del video de LOGIN_REQUIRED no identificado."""
         estado = datos.get("playabilityStatus") or {}
-        if estado.get("status") != "LOGIN_REQUIRED":
+        status = estado.get("status")
+        if status in ESTADOS_RESTRICCION_VIDEO:
+            raise YouTubeError(f"El video requiere verificar acceso o edad: {estado.get('reason') or status}")
+        if status != "LOGIN_REQUIRED":
             return
-        pantalla = (estado.get("errorScreen") or {}).get("playerErrorMessageRenderer") or {}
+        if not self.login_requerido:
+            self.login_consecutivos += 1
+        self.login_requerido = True
+        if self.login_consecutivos >= MAX_LOGIN_CONSECUTIVOS:
+            raise self._error_bloqueo("login_required")
+        pantalla = estado.get("errorScreen") or {}
+        mensaje = pantalla.get("playerErrorMessageRenderer") or {}
         mensajes = [estado.get("reason") or ""]
         for campo in ("reason", "subreason"):
-            nodo = pantalla.get(campo) or {}
+            nodo = mensaje.get(campo) or {}
             mensajes.append(nodo.get("simpleText") or _texto_runs(nodo.get("runs")))
         texto = " ".join(mensajes).casefold()
-        if any(marca in texto for marca in ("not a bot", "no eres un bot", "no eres un robot")):
-            self._bloquear("login_required")
-        raise YouTubeError(f"El video requiere sesion: {estado.get('reason') or 'LOGIN_REQUIRED'}")
+        restriccion_video = (
+            bool(estado.get("desktopLegacyAgeGateReason"))
+            or bool(RENDERERS_RESTRICCION_VIDEO.intersection(pantalla))
+            or (mensaje.get("icon") or {}).get("iconType") in ICONOS_RESTRICCION_VIDEO
+            or any(marca in texto for marca in MARCAS_RESTRICCION_VIDEO)
+        )
+        if restriccion_video:
+            raise YouTubeError(f"El video requiere sesion: {estado.get('reason') or status}")
+        raise self._error_bloqueo("login_required")
 
     @staticmethod
     def _espera_429(respuesta: requests.Response) -> float:
@@ -513,18 +541,18 @@ class ClienteYouTube:
 
     def _get(self, url: str, **kwargs) -> requests.Response:
         if self.bloqueo:
-            self._bloquear(self.bloqueo)
+            raise self._error_bloqueo(self.bloqueo)
         respuesta = self.sesion.get(url, timeout=TIMEOUT, **kwargs)
         if respuesta.status_code == 429:
             time.sleep(self._espera_429(respuesta))
             respuesta = self.sesion.get(url, timeout=TIMEOUT, **kwargs)
         if respuesta.status_code == 429:
-            self._bloquear("http_429")
+            raise self._error_bloqueo("http_429")
         return respuesta
 
     def _post(self, url: str, payload: dict, presupuesto: PresupuestoComentarios | None = None) -> requests.Response:
         if self.bloqueo:
-            self._bloquear(self.bloqueo)
+            raise self._error_bloqueo(self.bloqueo)
         if presupuesto:
             presupuesto.consumir_intento_pagina()
         respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
@@ -532,12 +560,12 @@ class ClienteYouTube:
             if presupuesto:
                 try:
                     presupuesto.consumir_intento_pagina()
-                except LimiteComentarios:
-                    self._bloquear("http_429")
+                except LimiteComentarios as exc:
+                    raise self._error_bloqueo("http_429") from exc
             time.sleep(self._espera_429(respuesta))
             respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
         if respuesta.status_code == 429:
-            self._bloquear("http_429")
+            raise self._error_bloqueo("http_429")
         return respuesta
 
     # -- paginas publicas ---------------------------------------------------- #
@@ -551,7 +579,7 @@ class ClienteYouTube:
                 f"No se pudo abrir la ficha del video (HTTP {respuesta.status_code}). "
                 "Puede ser un video privado, restringido por edad o eliminado."
             )
-        self._comprobar_bloqueo(extraer_respuesta_player(respuesta.text) or {})
+        self._validar_reproducibilidad(extraer_respuesta_player(respuesta.text) or {})
         self._html[video_id] = respuesta.text
         return respuesta.text
 
@@ -581,7 +609,7 @@ class ClienteYouTube:
         if respuesta.status_code != 200:
             raise YouTubeError(f"El reproductor respondio HTTP {respuesta.status_code}")
         datos = respuesta.json()
-        self._comprobar_bloqueo(datos)
+        self._validar_reproducibilidad(datos)
         estado = (datos.get("playabilityStatus") or {}).get("status")
         if estado not in (None, "OK"):
             motivo = (datos.get("playabilityStatus") or {}).get("reason") or estado
@@ -598,7 +626,7 @@ class ClienteYouTube:
         datos = respuesta.json()
         if not isinstance(datos, dict):
             raise YouTubeError("youtubei/v1/next no devolvio un objeto JSON.")
-        self._comprobar_bloqueo(datos)
+        self._validar_reproducibilidad(datos)
         if datos.get("error"):
             raise YouTubeError(f"youtubei/v1/next devolvio un error: {datos['error']}")
         if presupuesto:
@@ -1035,7 +1063,7 @@ def _errores_resultado(datos: dict) -> list[str]:
     return errores
 
 
-def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatorio: bool = False) -> dict:
+def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatorio: bool = False) -> tuple[dict, bool]:
     recibo = {
         "comando": args.comando, "capturado_en_utc": _sello(), "max_videos": MAX_VIDEOS,
         "total": len(resultados), "exitosos": sum(r["ok"] for r in resultados), "resultados": resultados,
@@ -1043,19 +1071,22 @@ def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatori
     }
     ruta = Path(args.out) / f"lote_{args.comando}.json"
     temporal = ruta.with_suffix(".json.tmp")
+    persistido = False
     try:
         _escribir_json(temporal, recibo)
         temporal.replace(ruta)
+        persistido = True
     except OSError as exc:
         if obligatorio:
             raise
         print(f"advertencia al escribir recibo; se reintentara en la siguiente actualizacion: {exc}", file=sys.stderr)
     finally:
+        # Tras replace, el temporal ya no existe; nunca se borra el recibo de destino.
         try:
             temporal.unlink(missing_ok=True)
         except OSError as exc:
             print(f"advertencia al limpiar recibo temporal: {exc}", file=sys.stderr)
-    return recibo
+    return recibo, persistido
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1084,8 +1115,9 @@ def main(argv: list[str] | None = None) -> int:
     ]
     try:
         if lote:
-            recibo = _guardar_recibo(args, resultados)
+            recibo, _ = _guardar_recibo(args, resultados)
         for indice, registro in enumerate(resultados):
+            cliente.login_requerido = False  # Contar cada entrada una vez, aunque `todo` falle varias veces.
             entrada = registro["entrada"]
             try:
                 video_id = extraer_id_video(entrada)
@@ -1112,6 +1144,8 @@ def main(argv: list[str] | None = None) -> int:
                     if not lote:
                         print(f"error: {exc}", file=sys.stderr)
                         return 3 if _es_error_red(exc) else 1
+            if not cliente.login_requerido:
+                cliente.login_consecutivos = 0
             registro["estado"] = "procesado"
             registro.pop("motivo")
             if cliente.bloqueo:
@@ -1119,13 +1153,14 @@ def main(argv: list[str] | None = None) -> int:
                 for pendiente in resultados[indice + 1:]:
                     pendiente["motivo"] = cliente.bloqueo
             if lote:
-                recibo = _guardar_recibo(args, resultados)
+                recibo, _ = _guardar_recibo(args, resultados)
             if cliente.bloqueo:
                 break
             if indice + 1 < len(entradas):
                 time.sleep(cliente.pausar)
         if lote:
-            recibo = _guardar_recibo(args, resultados, obligatorio=True)
+            # Es la unica escritura cuyo fallo se propaga; no eliminar aunque el ultimo guardado haya tenido exito.
+            recibo, _ = _guardar_recibo(args, resultados, obligatorio=True)
     except OSError as exc:
         print(f"error al escribir recibo: {exc}", file=sys.stderr)
         return 1

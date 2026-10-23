@@ -804,7 +804,7 @@ class TestLotesCLI(unittest.TestCase):
             self.assertEqual(recibo["resultados"][1]["estado"], "no_procesado")
 
     def test_login_required_del_video_no_detiene_lote(self):
-        motivos = ("Sign in to confirm your age", "This is a private video", None)
+        motivos = ("Sign in to confirm your age", "This is a private video", "Members-only content")
         for comando in ("metadatos", "pistas", "comentarios"):
             for motivo in motivos:
                 with self.subTest(comando=comando, motivo=motivo), tempfile.TemporaryDirectory() as carpeta:
@@ -815,6 +815,8 @@ class TestLotesCLI(unittest.TestCase):
                     else:
                         html += ' var ytInitialData = {"sectionIdentifier":"comment-item-section",'
                         html += '"continuationCommand":{"token":"inicio"}};'
+                    # En pistas/comentarios el HTML solo aporta clave/seccion; el POST determina la restriccion.
+                    # El segundo video reutiliza ese HTML y su POST vacio ya no exige sesion.
                     html_valido = html if comando != "metadatos" else (
                         'var ytInitialPlayerResponse = {"videoDetails":{"title":"T"}};'
                     )
@@ -907,6 +909,111 @@ class TestLotesCLI(unittest.TestCase):
         ))
         with tempfile.TemporaryDirectory() as carpeta, patch.object(Y, "ClienteYouTube", return_value=cliente):
             self.assertEqual(self.ejecutar(["pistas", "--url", VIDEO_ID, "--out", carpeta]), 1)
+
+    def test_login_required_desconocido_detiene_lote(self):
+        for motivo in (None, "", "Faça login para confirmar que você não é um robô", "Connectez-vous pour continuer"):
+            with self.subTest(motivo=motivo), tempfile.TemporaryDirectory() as carpeta:
+                restringido = {"playabilityStatus": {"status": "LOGIN_REQUIRED", "reason": motivo}}
+                html = "var ytInitialPlayerResponse = " + json.dumps(restringido) + ";"
+                sesion = FakeSesion(gets=[
+                    FakeRespuesta(texto=html),
+                    FakeRespuesta(texto='var ytInitialPlayerResponse = {"videoDetails":{"title":"T"}};'),
+                ])
+                cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+                with patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(Y.time, "sleep"):
+                    self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta]), 1)
+                recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+                self.assertEqual(len(sesion.llamadas), 1)
+                self.assertEqual(recibo["resultados"][1]["motivo"], "login_required")
+
+    def test_restriccion_estructural_del_video_no_bloquea_cliente(self):
+        for estado in (
+            {"status": "AGE_CHECK_REQUIRED"},
+            {"status": "CONTENT_CHECK_REQUIRED"},
+            {"status": "LOGIN_REQUIRED", "desktopLegacyAgeGateReason": 1},
+            {"status": "LOGIN_REQUIRED", "errorScreen": {"playerAgeGateRenderer": {}}},
+            {"status": "LOGIN_REQUIRED", "errorScreen": {
+                "playerErrorMessageRenderer": {"icon": {"iconType": "PRIVACY_PRIVATE"}}
+            }},
+        ):
+            with self.subTest(estado=estado), tempfile.TemporaryDirectory() as carpeta:
+                sesion = FakeSesion(gets=[
+                    FakeRespuesta(texto="var ytInitialPlayerResponse = " + json.dumps({"playabilityStatus": estado}) + ";"),
+                    FakeRespuesta(texto='var ytInitialPlayerResponse = {"videoDetails":{"title":"T"}};'),
+                ])
+                cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+                with patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(Y.time, "sleep"):
+                    self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta]), 1)
+                recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+                self.assertEqual([r["ok"] for r in recibo["resultados"]], [False, True])
+                self.assertIsNone(cliente.bloqueo)
+
+    def test_dos_login_required_consecutivos_detienen_lote(self):
+        restringido = 'var ytInitialPlayerResponse = {"playabilityStatus":'
+        restringido += '{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm your age"}};'
+        sesion = FakeSesion(gets=[
+            FakeRespuesta(texto=restringido), FakeRespuesta(texto=restringido),
+            FakeRespuesta(texto='var ytInitialPlayerResponse = {"videoDetails":{"title":"T"}};'),
+        ])
+        cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(
+            Y.time, "sleep"
+        ):
+            self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID, "abcdefghijk", "12345678901", "--out", carpeta]), 1)
+            recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(sesion.llamadas), 2)
+        self.assertEqual(recibo["resultados"][2]["motivo"], "login_required")
+
+    def test_login_required_no_consecutivos_reinician_circuito(self):
+        restringido = 'var ytInitialPlayerResponse = {"playabilityStatus":'
+        restringido += '{"status":"LOGIN_REQUIRED","reason":"This is a private video"}};'
+        sesion = FakeSesion(gets=[
+            FakeRespuesta(texto=restringido),
+            FakeRespuesta(texto='var ytInitialPlayerResponse = {"videoDetails":{"title":"T"}};'),
+            FakeRespuesta(texto=restringido),
+        ])
+        cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(
+            Y.time, "sleep"
+        ):
+            self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID, "abcdefghijk", "12345678901", "--out", carpeta]), 1)
+            recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+        self.assertEqual([r["ok"] for r in recibo["resultados"]], [False, True, False])
+        self.assertIsNone(cliente.bloqueo)
+
+    def test_error_red_compatible_sin_jsondecodeerror_de_requests(self):
+        with patch.object(Y.requests, "exceptions", object()):
+            self.assertTrue(Y._es_error_red(Y.requests.ConnectionError("sin red")))
+            self.assertFalse(Y._es_error_red(json.JSONDecodeError("no JSON", "<html>", 0)))
+            with patch.object(Y.ClienteYouTube, "pagina_watch", side_effect=Y.requests.ConnectionError("sin red")):
+                self.assertEqual(self.ejecutar(["metadatos", "--url", VIDEO_ID]), 3)
+
+    def test_guardar_recibo_informa_persistencia(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            args = Y.argparse.Namespace(out=carpeta, comando="metadatos")
+            salida = Y._guardar_recibo(args, [])
+            self.assertIsInstance(salida, tuple)
+            recibo, persistido = salida
+            self.assertTrue(persistido)
+            self.assertEqual(recibo["total"], 0)
+            with patch.object(Path, "replace", side_effect=PermissionError("ocupado")), contextlib.redirect_stderr(io.StringIO()):
+                recibo, persistido = Y._guardar_recibo(args, [])
+            self.assertFalse(persistido)
+
+    def test_dos_login_consecutivos_interrumpen_todo_sin_contar_operaciones(self):
+        restringido = 'var ytInitialPlayerResponse = {"playabilityStatus":'
+        restringido += '{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm your age"}};'
+        sesion = FakeSesion(gets=[FakeRespuesta(texto=restringido) for _ in range(6)])
+        cliente = Y.ClienteYouTube(sesion=sesion, pausar=0)
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(Y, "ClienteYouTube", return_value=cliente), patch.object(
+            Y.time, "sleep"
+        ):
+            self.assertEqual(self.ejecutar(["todo", "--url", VIDEO_ID, "abcdefghijk", "12345678901", "--out", carpeta]), 1)
+            recibo = json.loads((Path(carpeta) / "lote_todo.json").read_text(encoding="utf-8"))
+        # Tres operaciones del primer video; el primer LOGIN del segundo dispara el corte.
+        self.assertEqual(len(sesion.llamadas), 4)
+        self.assertEqual(recibo["resultados"][1]["resultado"]["transcripcion"]["estado"], "no_procesado")
+        self.assertEqual(recibo["resultados"][2]["motivo"], "login_required")
 
 
 if __name__ == "__main__":

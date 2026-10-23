@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.3 — 2026-10-22
+
+- Cierre seguro ante `LOGIN_REQUIRED`: solo señales positivas de restricción por video permiten continuar; motivos vacíos, desconocidos o de idioma no reconocido detienen el cliente.
+- Señales estructurales de edad/privacidad prioritarias y constantes con nombre para las heurísticas textuales de edad, acceso privado y membresía.
+- Corte inmediato ante dos entradas consecutivas con `LOGIN_REQUIRED`, incluso por restricciones del video; `todo` cuenta una sola vez por entrada y no solicita operaciones posteriores al corte.
+- Validador renombrado a `_validar_reproducibilidad`, con excepciones explícitas y una sola entrada al estado de bloqueo.
+- Clasificación de transporte compatible con requests anterior a 2.27 mediante detección opcional de `JSONDecodeError`, sin añadir dependencias.
+- Guardado de recibos devuelve el estado de persistencia; comentarios explican la limpieza del temporal y la escritura final obligatoria. Fixture del segundo video aclarada.
+- Regresiones offline de motivos desconocidos/localizados, señales estructurales, corte consecutivo y reinicio, compatibilidad de requests y persistencia del recibo.
+
 ## 1.2.2 — 2026-10-22
 
 - `LOGIN_REQUIRED` distingue restricciones propias del video de un bloqueo explícito de bots mediante `reason` y la estructura de error del reproductor; edad, acceso privado o motivo desconocido no detienen otros videos.
