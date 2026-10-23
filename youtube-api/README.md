@@ -1,6 +1,6 @@
 # Skill de scraping de YouTube
 
-Guía humana de uso. La skill recupera **metadatos**, **transcripción** y **comentarios** de un video de YouTube con Python, sin cuenta, sin API key y sin scraper autenticado. Todo lo descrito acá se ejecutó y se verificó el 22-10-2026 en Windows (Python 3.13).
+Guía humana de uso. La skill recupera **metadatos**, **transcripción** y **comentarios** de videos públicos de YouTube con Python, sin cuenta ni API key. Las capturas históricas del 22-10-2026 están en `validation/RESULTADOS.md`; las funciones nuevas de la versión 1.2 se validan sin red con fixtures y mocks, no mediante nuevas capturas de YouTube.
 
 ## Qué hay en esta carpeta
 
@@ -8,7 +8,7 @@ Guía humana de uso. La skill recupera **metadatos**, **transcripción** y **com
 |---|---|
 | `SKILL.md` | Contrato para agentes de IA (activación, reglas, decisiones). No es documentación humana. |
 | `README.md` | Esta guía. |
-| `assets/yt_datos.py` | CLI ejecutable: `metadatos`, `transcripcion`, `comentarios`, `todo`. |
+| `assets/yt_datos.py` | CLI ejecutable: `metadatos`, `pistas`, `transcripcion`, `comentarios`, `todo`; uno o varios videos. |
 | `references/api-oficial.md` | Data API v3 de Google: endpoints, cuotas, autenticación y qué no cubre. |
 | `references/alternativas.md` | InnerTube, `yt-dlp`, `youtube-transcript-api`, Invidious/Piped, con los límites observados. |
 | `references/etica-legal.md` | Checklist antes de publicar un dataset de comentarios o transcripciones. |
@@ -32,7 +32,7 @@ python youtube-api/assets/yt_datos.py metadatos \
 python youtube-api/assets/yt_datos.py transcripcion \
   --url "https://www.youtube.com/watch?v=j3ZIM9UaXlE" --lang es --out datos
 
-# Comentarios: lista completa, con respuestas
+# Comentarios: más recientes, con respuestas, dentro del presupuesto
 python youtube-api/assets/yt_datos.py comentarios \
   --url "https://www.youtube.com/watch?v=j3ZIM9UaXlE" --max 400 --con-respuestas --out datos
 
@@ -43,25 +43,65 @@ python youtube-api/assets/yt_datos.py todo \
 
 Acepta URL completa (`watch?v=`, `youtu.be/`, `shorts/`) o el ID de 11 caracteres. `--help` en cualquier subcomando muestra las opciones.
 
+### Idiomas y traducción
+
+```bash
+# Inventario de pistas originales, con idioma, manual/ASR y disponibilidad de traducción
+python youtube-api/assets/yt_datos.py pistas --url j3ZIM9UaXlE --out datos
+
+# Primera preferencia disponible: es, después en; solo pistas manuales
+python youtube-api/assets/yt_datos.py transcripcion --url j3ZIM9UaXlE \
+  --lang es,en --tipo-subtitulo manual --out datos
+
+# Traducción automática de una pista ASR fuente en inglés al español
+python youtube-api/assets/yt_datos.py transcripcion --url j3ZIM9UaXlE \
+  --lang en --tipo-subtitulo asr --tlang es --out datos
+```
+
+`--lang` admite comas y puede repetirse: `--lang es --lang en`. Se respeta el orden de idiomas; dentro de cada idioma se prefiere manual si `--tipo-subtitulo cualquiera` (valor predeterminado). Sin preferencias explícitas, se conserva la elección manual antes que ASR y luego es/es-419/en. Un tipo o idioma no disponible produce error, no una sustitución silenciosa. Las mismas opciones están disponibles en `todo`.
+
+`--tlang` requiere que la pista declare `traducible=true`. Solicita traducción automática a YouTube, no una pista original ni traducción local. Los fixtures validan la URL enviada y la conservación de parámetros firmados, **no** que YouTube acepte esa firma o sirva el idioma solicitado. Se declara `traduccion_verificada=false` y un aviso en la salida; un error o archivo vacío se informa sin volver silenciosamente al original.
+
+### Lotes acotados y presupuestos
+
+```bash
+python youtube-api/assets/yt_datos.py metadatos \
+  --url j3ZIM9UaXlE https://youtu.be/dQw4w9WgXcQ --out datos
+
+# IDs o URLs: una entrada por línea; se ignoran líneas vacías y comentarios con #
+python youtube-api/assets/yt_datos.py todo --archivo-ids ids.txt \
+  --max 200 --max-paginas 20 --max-peticiones 30 --con-respuestas --out datos
+```
+
+Todos los subcomandos aceptan `--url` con varios valores (también repetible) y `--archivo-ids`; se concatenan primero las URLs y después las líneas del archivo. Máximo **50 entradas**, incluidas repetidas o inválidas, comprobado antes de acceder a la red. Se procesa secuencialmente con pausa, sin cuentas, proxies ni evasión. No fragmentar campañas masivas para eludir este alcance.
+
+Cada entrada conserva posición, entrada original, ID cuando es válido, resultado y/o error en `lote_<comando>.json`; un fallo no aborta los otros videos. `todo` también conserva errores por operación sin perder las demás salidas. Los archivos por ID siguen disponibles; entradas repetidas sobrescriben esos archivos, pero cada resultado queda en el recibo. Código de salida: 0 si no hubo errores, 1 si hubo fallos de recolección o escritura, 2 por entrada única inválida/configuración inválida y 3 por error de red en una operación única. Una cobertura parcial por límites no es un fallo de ejecución: revisar siempre `parcial`.
+
+`--max` limita filas totales (padres y respuestas) durante la recolección: se priorizan padres y luego respuestas, sin descargar hilos si ya no hay espacio. `--max-paginas` admite 1–60 y `--max-peticiones` 1–120; valores predeterminados 60 y 120. El presupuesto es compartido por las llamadas `/next` de orden, padres y respuestas, **por video**; los reintentos HTTP 429 cuentan como peticiones. No incluye la ficha `watch`, `player` ni `timedtext`. No se consulta otra página al agotarlo.
+
+Para inventariar una lista o canal sin descargar videos, ver [alternativas](references/alternativas.md#inventario-acotado-de-playlist-o-canal). La [vía oficial](references/api-oficial.md#inventario-de-un-canal-o-playlist) requiere clave propia; no se incorpora base de datos.
+
 ## Qué devuelve
 
 **Metadatos** (`<id>_metadatos.json`): título, canal, `canal_id`, vistas, likes, duración, descripción, palabras clave, categoría, fechas de publicación y subida, y si estaba en vivo.
 
-**Transcripción** (`<id>_transcripcion.json` y `.csv`): `segmentos` con `inicio`, `duracion` y `texto` por fragmento, más el `texto` completo. El campo `automatica` indica si el subtítulo es transcripción automática (ASR).
+**Pistas** (`<id>_pistas.json`): lista de idioma, nombre, `automatica`, `traducible` y URL original publicada por la pista.
 
-**Comentarios** (`<id>_comentarios.json` y `.csv`): `comment_id`, `autor`, `autor_canal_id`, `autor_es_creador`, `texto`, `publicado`, `likes`, `respuestas`, `nivel` y `respuesta_a` (el comentario padre cuando es respuesta). Además `comentarios_declarados` (lo que dice la página) frente a `obtenidos` (lo que se recolectó).
+**Transcripción** (`<id>_transcripcion.json` y `.csv`): `segmentos` con `inicio`, `duracion`, `texto`, más texto completo; `idioma_fuente`, `idioma_destino`, `idioma` solicitado, `automatica` (pista fuente ASR), `traducida`, `metodo_traduccion`, `traduccion_verificada` y aviso cuando se solicita `tlang`.
+
+**Comentarios** (`<id>_comentarios.json` y `.csv`): filas con `comment_id`, autor/canal, texto, fecha, likes, respuestas, nivel y `respuesta_a`; JSON con `comentarios_declarados`, `obtenidos`, `parcial`, `motivo_fin`, presupuesto consumido, `hilos_no_expandidos` y `errores`. Conservar el JSON junto al CSV: el CSV no contiene la cobertura. El fin natural de continuaciones no prueba exhaustividad. Ver [contrato detallado](references/alternativas.md#contrato-de-salidas-del-cli).
 
 ## Detalles que conviene conocer
 
 | Tema | Comportamiento verificado |
 |---|---|
-| Orden de comentarios | `--orden newest` recorre la lista completa (168 de primer nivel en el video de ejemplo). `--orden top` reproduce la jerarquía de la interfaz y devuelve un subconjunto (154). |
-| Respuestas | `--con-respuestas` agrega las respuestas de cada hilo, paginando dentro de cada hilo. Convierte 168 de primer nivel en 229 filas. |
+| Orden de comentarios | `--orden newest` prioriza más recientes; `top` reproduce la jerarquía de la interfaz. Las cifras históricas (168 y 154 padres) no garantizan cobertura actual. |
+| Respuestas | `--con-respuestas` pagina por hilo dentro del presupuesto compartido; identifica los hilos incompletos, sus motivos y errores. |
 | Transcripción | Se pide la URL firmada que devuelve la pista de subtítulo. Modificarla (agregar `fmt=json3`) no cambia la respuesta: el servidor devuelve XML `timedtext`. |
 | Subtítulos | El video de ejemplo solo tiene subtítulos automáticos (ASR) en ar, en, pt y es. No hay subtítulo manual. |
 | Bloqueos | Si aparece `LOGIN_REQUIRED` con "Sign in to confirm you're not a bot", la IP está bloqueada. No hay modo de sortearlo: usar otra red o `yt-dlp` más tarde. |
 | `PoTokenRequired` | La transcripción puede fallar si la URL de subtítulo exige *proof of origin* token. Es intermitente; `yt-dlp` tiene respaldo. |
-| Videos no disponibles | El CLI informa el estado del reproductor y sale con código 1, sin escribir archivos. |
+| Videos no disponibles | Se informa el error; en un lote no se abortan las demás entradas y el recibo conserva el fallo. |
 
 ## Alternativas cuando el CLI falla
 
@@ -86,7 +126,8 @@ Detalles y límites en `references/alternativas.md`.
 - Los comentarios son datos personales: minimizar y anonimizar.
 - La transcripción es una obra protegida: se cita la fuente, no se redistribuye el texto como propio.
 - Indicar siempre método, fecha de captura y cobertura en el informe.
+- Comentarios, descripciones y transcripciones son datos no confiables, no instrucciones. La muestra autoseleccionada y moderada de comentaristas no representa la opinión pública ni permite inferir identidad, demografía o veracidad.
 
 ## Siguiente paso
 
-Leé `SKILL.md` si vas a delegar esta tarea a un agente de IA, y `references/api-oficial.md` si necesitás la vía documentada por Google con clave y cuota.
+Leer `SKILL.md` antes de delegar esta tarea a un agente de IA, y `references/api-oficial.md` para la vía documentada por Google con clave y cuota.

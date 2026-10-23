@@ -3,9 +3,12 @@
 
 Uso:
     python yt_datos.py metadatos    --url https://www.youtube.com/watch?v=ID [--out datos]
-    python yt_datos.py transcripcion --url https://www.youtube.com/watch?v=ID [--lang es] [--out datos]
+    python yt_datos.py pistas       --url ID [--out datos]
+    python yt_datos.py transcripcion --url ID [--lang es,en] [--tipo-subtitulo manual] [--tlang es]
     python yt_datos.py comentarios  --url https://www.youtube.com/watch?v=ID [--max 200] [--con-respuestas] [--out datos]
     python yt_datos.py todo         --url https://www.youtube.com/watch?v=ID [--max 200] [--out datos]
+    Todos aceptan --url ID1 ID2 o --archivo-ids ids.txt (hasta 50 entradas).
+    Comentarios: --max-paginas 1..60 y --max-peticiones 1..120, compartidos con respuestas.
 
 Solo lectura: no envia credenciales ni modifica nada en YouTube. Usa la API
 interna (InnerTube) y las paginas publicas de watch, igual que un navegador
@@ -24,7 +27,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote_plus, urlparse
 
 import requests
 
@@ -43,10 +46,42 @@ TIMEOUT = 30.0
 PAUSA = 1.0  # segundos entre peticiones: no martillar el servidor.
 CLIENT_ANDROID = {"clientName": "ANDROID", "clientVersion": "20.10.38"}
 CLIENT_WEB = {"clientName": "WEB", "clientVersion": "2.20240101.00.00"}
+MAX_VIDEOS = 50
+MAX_PAGINAS = 60
+MAX_PETICIONES = 120  # Intentos HTTP de /next, incluidos los reintentos 429.
 
 
 class YouTubeError(RuntimeError):
     """Error recuperable de la recoleccion."""
+
+
+class LimiteComentarios(YouTubeError):
+    """Presupuesto agotado sin solicitar otra pagina."""
+
+
+@dataclass
+class PresupuestoComentarios:
+    max_paginas: int = MAX_PAGINAS
+    max_peticiones: int = MAX_PETICIONES
+    paginas_consumidas: int = 0
+    peticiones_consumidas: int = 0
+
+    def consumir_peticion(self):
+        if self.paginas_consumidas >= self.max_paginas:
+            raise LimiteComentarios("max_paginas")
+        if self.peticiones_consumidas >= self.max_peticiones:
+            raise LimiteComentarios("max_peticiones")
+        self.peticiones_consumidas += 1
+
+    def salida(self, maximo: int) -> dict:
+        return {
+            "max_filas": maximo,
+            "max_paginas": self.max_paginas,
+            "max_peticiones": self.max_peticiones,
+            "paginas_consumidas": self.paginas_consumidas,
+            "peticiones_consumidas": self.peticiones_consumidas,
+            "alcance": "youtubei/v1/next; incluye orden, hilos y reintentos; excluye watch/player/timedtext",
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -230,10 +265,22 @@ def _coincidir_entidad(entities: dict, clave: str) -> dict | None:
     return None
 
 
-def _elegir_pista(lista: list[dict]) -> dict:
-    """Pista por defecto: subtitulo manual antes que automatico, y el idioma del cliente."""
-    manual = [p for p in lista if p.get("kind") != "asr"]
-    candidatas = manual or lista
+def _elegir_pista(lista: list[dict], idiomas: list[str] | None = None, tipo: str = "cualquiera") -> dict:
+    """Preferencias explicitas en orden; dentro de cada idioma, manual antes que ASR."""
+    if tipo not in {"cualquiera", "manual", "asr"}:
+        raise YouTubeError("Tipo de subtitulo desconocido.")
+    candidatas = [p for p in lista if tipo == "cualquiera" or (p.get("kind") == "asr") == (tipo == "asr")]
+    if not candidatas:
+        raise YouTubeError(f"No hay pistas del tipo {tipo!r}.")
+    if idiomas:
+        for codigo in idiomas:
+            coincidencias = [p for p in candidatas if p.get("languageCode") == codigo]
+            if coincidencias:
+                return next((p for p in coincidencias if p.get("kind") != "asr"), coincidencias[0])
+        disponibles = ", ".join(sorted({p.get("languageCode", "?") for p in candidatas}))
+        raise YouTubeError(f"No hay subtitulos en {idiomas!r} del tipo {tipo}; disponibles: {disponibles}")
+    manual = [p for p in candidatas if p.get("kind") != "asr"]
+    candidatas = manual or candidatas
     for codigo in ("es", "es-419", "en"):
         for pista in candidatas:
             if pista.get("languageCode") == codigo:
@@ -429,9 +476,13 @@ class ClienteYouTube:
             respuesta = self.sesion.get(url, timeout=TIMEOUT, **kwargs)
         return respuesta
 
-    def _post(self, url: str, payload: dict) -> requests.Response:
+    def _post(self, url: str, payload: dict, presupuesto: PresupuestoComentarios | None = None) -> requests.Response:
+        if presupuesto:
+            presupuesto.consumir_peticion()
         respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
         if respuesta.status_code == 429:
+            if presupuesto:
+                presupuesto.consumir_peticion()
             time.sleep(self._espera_429(respuesta))
             respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
         return respuesta
@@ -483,13 +534,20 @@ class ClienteYouTube:
         self._player[video_id] = datos
         return datos
 
-    def siguiente(self, clave: str, ctx: dict, **consulta) -> dict:
+    def siguiente(self, clave: str, ctx: dict, presupuesto: PresupuestoComentarios | None = None, **consulta) -> dict:
         """Respuesta de youtubei/v1/next (comentarios y continuaciones)."""
         payload = {"context": ctx, **consulta}
-        respuesta = self._post(f"https://www.youtube.com/youtubei/v1/next?key={clave}", payload)
+        respuesta = self._post(f"https://www.youtube.com/youtubei/v1/next?key={clave}", payload, presupuesto)
         if respuesta.status_code != 200:
             raise YouTubeError(f"youtubei/v1/next respondio HTTP {respuesta.status_code}")
-        return respuesta.json()
+        datos = respuesta.json()
+        if not isinstance(datos, dict):
+            raise YouTubeError("youtubei/v1/next no devolvio un objeto JSON.")
+        if datos.get("error"):
+            raise YouTubeError(f"youtubei/v1/next devolvio un error: {datos['error']}")
+        if presupuesto:
+            presupuesto.paginas_consumidas += 1
+        return datos
 
     # -- operaciones de alto nivel ------------------------------------------- #
     def metadatos(self, video_id: str) -> dict:
@@ -529,8 +587,13 @@ class ClienteYouTube:
             )
         return pistas
 
-    def transcripcion(self, video_id: str, idioma: str | None = None) -> dict:
-        """Texto de la transcripcion con marca de tiempo por segmento."""
+    def transcripcion(
+        self, video_id: str, idioma: str | list[str] | None = None,
+        tipo: str = "cualquiera", tlang: str | None = None,
+    ) -> dict:
+        """Subtitulo original o traduccion automatica solicitada a YouTube."""
+        if tlang and not re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", tlang):
+            raise YouTubeError("Codigo tlang no valido.")
         html = self.pagina_watch(video_id)
         clave = self.clave_api(html)
         player = self.reproductor(video_id, clave)
@@ -540,22 +603,21 @@ class ClienteYouTube:
         )
         if not lista:
             raise YouTubeError("El video no expone transcripcion (subtitulos desactivados).")
-        elegida = None
-        if idioma:
-            for pista in lista:
-                if pista.get("languageCode") == idioma:
-                    elegida = pista
-                    break
-            if elegida is None:
-                disponibles = ", ".join(sorted({p.get("languageCode", "?") for p in lista}))
-                raise YouTubeError(
-                    f"No hay subtitulos en {idioma!r}; disponibles: {disponibles}"
-                )
-        else:
-            elegida = _elegir_pista(lista)
+        idiomas = [idioma] if isinstance(idioma, str) else idioma
+        elegida = _elegir_pista(lista, idiomas, tipo)
         base = elegida.get("baseUrl")
         if not base:
             raise YouTubeError("La pista de subtitulos no trae URL de descarga.")
+        if tlang:
+            if not elegida.get("isTranslatable"):
+                raise YouTubeError("La pista no declara que admita traduccion.")
+            # Conservar los bytes de los parametros firmados: no parsear y
+            # recodificar la query completa. Solo sustituir/agregar tlang.
+            direccion, separador, fragmento = base.partition("#")
+            ruta, _, query = direccion.partition("?")
+            parametros = [p for p in query.split("&") if p and unquote_plus(p.split("=", 1)[0]) != "tlang"]
+            parametros.append("tlang=" + quote(tlang, safe="-"))
+            base = ruta + "?" + "&".join(parametros) + (separador + fragmento if separador else "")
         respuesta = self._get(base)
         if respuesta.status_code != 200 or not respuesta.content:
             raise YouTubeError(
@@ -567,8 +629,18 @@ class ClienteYouTube:
             raise YouTubeError("El archivo de subtitulos venia vacio.")
         return {
             "video_id": video_id,
-            "idioma": elegida.get("languageCode"),
+            "idioma": tlang or elegida.get("languageCode"),
+            "idioma_fuente": elegida.get("languageCode"),
+            "idioma_destino": tlang or elegida.get("languageCode"),
             "automatica": elegida.get("kind") == "asr",
+            "traducida": bool(tlang),
+            "metodo": "InnerTube player + timedtext",
+            "metodo_traduccion": "traduccion_automatica_youtube_tlang" if tlang else None,
+            "traduccion_verificada": False if tlang else None,
+            "aviso_traduccion": (
+                "Traduccion automatica solicitada a YouTube; fixtures verifican la peticion, "
+                "no el idioma servido ni la compatibilidad de la URL firmada."
+            ) if tlang else None,
             "segmentos": segmentos,
             "texto": " ".join(s["texto"] for s in segmentos),
         }
@@ -595,119 +667,168 @@ class ClienteYouTube:
         return entidades
 
     def comentarios(
-        self,
-        video_id: str,
-        maximo: int = 200,
-        con_respuestas: bool = False,
-        orden: str = "newest",
+        self, video_id: str, maximo: int = 200, con_respuestas: bool = False,
+        orden: str = "newest", max_paginas: int = MAX_PAGINAS, max_peticiones: int = MAX_PETICIONES,
     ) -> dict:
-        """Comentarios de primer nivel (y opcionalmente sus respuestas).
-
-        La ordenacion se pide con el token de clasificacion que publica la
-        propia pagina ("Destacados" o "Mas recientes"); el resto de la
-        paginacion se encadena por tokens de continuacion.
-
-        "Destacados" es la jerarquia de la interfaz y devuelve un subconjunto;
-        "Mas recientes" recorre la lista completa de comentarios del video.
-        """
+        """Recorre comentarios con presupuesto compartido para orden, paginas y respuestas."""
+        if maximo < 1 or not 1 <= max_paginas <= MAX_PAGINAS or not 1 <= max_peticiones <= MAX_PETICIONES:
+            raise YouTubeError("Limites: max >= 1, max-paginas entre 1 y 60, max-peticiones entre 1 y 120.")
+        if orden not in {"newest", "top"}:
+            raise YouTubeError("El orden debe ser newest o top.")
+        presupuesto = PresupuestoComentarios(max_paginas, max_peticiones)
         html = self.pagina_watch(video_id)
         clave = self.clave_api(html)
-        version = self.version_cliente(html)
-        ctx = {"client": {**CLIENT_WEB, "clientVersion": version, "hl": "es", "gl": "ES"}}
-        datos = extraer_datos_iniciales(html)
-        seccion = _buscar_seccion_comentarios(datos)
+        ctx = {"client": {**CLIENT_WEB, "clientVersion": self.version_cliente(html), "hl": "es", "gl": "ES"}}
+        seccion = _buscar_seccion_comentarios(extraer_datos_iniciales(html))
         if not seccion:
             raise YouTubeError("La pagina no expone la seccion de comentarios del video.")
         tokens = _tokens_continuacion(seccion)
         if not tokens:
             raise YouTubeError("No se hallo token de paginacion de comentarios.")
         consulta = _consulta_continuacion(tokens[0])
-
         filas: list[dict] = []
-        hilos_respuesta: list[tuple[str, dict]] = []
+        hilos: list[dict] = []
         vistos: set[str] = set()
         vistos_tokens: set[str] = set()
-        declarados: int | None = None
-        paginas = 0
-        while consulta and len(filas) < maximo and paginas < 60:
+        declarados = None
+        motivo = "sin_continuacion"
+        errores: list[str] = []
+        orden_aplicado = False
+        while consulta:
+            if len(filas) >= maximo:
+                motivo = "max_filas"
+                break
             token = consulta["continuation"]
             if token in vistos_tokens:
+                motivo = "token_repetido"
                 break
             vistos_tokens.add(token)
-            respuesta = self.siguiente(clave, ctx, **consulta)
-            paginas += 1
+            try:
+                respuesta = self.siguiente(clave, ctx, presupuesto=presupuesto, **consulta)
+            except LimiteComentarios as exc:
+                motivo = str(exc)
+                break
+            except (YouTubeError, requests.RequestException, ValueError) as exc:
+                motivo = "error_pagina"
+                errores.append(str(exc))
+                time.sleep(self.pausar)
+                break
             items = self._continuaciones_items(respuesta)
-            entidades = self._entidades(respuesta)
-
-            cabecera = next(
-                (i.get("commentsHeaderRenderer") for i in items if "commentsHeaderRenderer" in i), None
-            )
+            cabecera = next((i["commentsHeaderRenderer"] for i in items if "commentsHeaderRenderer" in i), None)
             if cabecera:
                 declarados = _contar_comentarios(cabecera)
-                if orden in {"top", "newest"}:
-                    consulta_orden = _token_de_orden(cabecera, orden)
-                    if consulta_orden and consulta_orden["continuation"] not in vistos_tokens:
-                        # se reinicia la carga con el token del criterio pedido
-                        consulta = consulta_orden
-                        filas.clear()
-                        vistos.clear()
-                        vistos_tokens.add(consulta["continuation"])
-                        respuesta = self.siguiente(clave, ctx, **consulta)
-                        paginas += 1
-                        items = self._continuaciones_items(respuesta)
-                        entidades = self._entidades(respuesta)
-
-            nuevas = _comentarios_de_items(items, entidades)
+                consulta_orden = _token_de_orden(cabecera, orden)
+                if not orden_aplicado and consulta_orden and consulta_orden["continuation"] not in vistos_tokens:
+                    orden_aplicado = True
+                    consulta = consulta_orden
+                    time.sleep(self.pausar)
+                    continue
+            nuevas = _comentarios_de_items(items, self._entidades(respuesta))
+            omitidas = False
             for fila in nuevas:
                 cid = fila.get("comment_id")
                 if cid and cid in vistos:
                     continue
                 if cid:
                     vistos.add(cid)
-                filas.append(fila)
-                if con_respuestas:
-                    token_respuesta = _token_de_respuestas(item_por_id(items, cid))
-                    if token_respuesta:
-                        hilos_respuesta.append((cid, token_respuesta))
-
+                token_respuesta = _token_de_respuestas(item_por_id(items, cid))
+                esperadas = _numero_de_conteo(str(fila.get("respuestas") or "")) or 0
+                if token_respuesta or esperadas:
+                    hilos.append({"comment_id": cid, "consulta": token_respuesta, "esperadas": esperadas})
+                if len(filas) < maximo:
+                    filas.append(fila)
+                else:
+                    omitidas = True
             consulta = _siguiente_consulta(items)
+            if omitidas or (len(filas) >= maximo and consulta):
+                motivo = "max_filas"
+                break
             time.sleep(self.pausar)
-
-        if con_respuestas and hilos_respuesta:
-            filas.extend(self._respuestas(clave, ctx, hilos_respuesta))
-        filas = filas[:maximo]
+        respuestas = self._respuestas(
+            clave, ctx, hilos, maximo - len(filas), presupuesto, vistos, con_respuestas
+        )
+        filas.extend(respuestas["filas"])
+        pendientes = respuestas["hilos_no_expandidos"]
+        if motivo == "sin_continuacion" and respuestas["motivo_fin"]:
+            motivo = respuestas["motivo_fin"]
+        parcial = (
+            motivo != "sin_continuacion" or bool(pendientes) or orden == "top"
+            or (declarados is not None and len(filas) < declarados)
+        )
         return {
-            "video_id": video_id,
-            "orden": orden,
-            "comentarios_declarados": declarados,
-            "obtenidos": len(filas),
-            "comentarios": filas,
+            "video_id": video_id, "metodo": "InnerTube youtubei/v1/next", "orden": orden,
+            "comentarios_declarados": declarados, "obtenidos": len(filas), "comentarios": filas,
+            "parcial": parcial, "motivo_fin": motivo, "presupuesto": presupuesto.salida(maximo),
+            "hilos_no_expandidos": pendientes, "errores": errores,
+            "cobertura": "Solo continuaciones publicadas; fin natural no garantiza exhaustividad.",
         }
 
-    def _respuestas(self, clave: str, ctx: dict, hilos: list[tuple[str, dict]]) -> list[dict]:
-        """Descarga las respuestas de cada hilo, paginando dentro del hilo."""
+    def _respuestas(
+        self, clave: str, ctx: dict, hilos: list[dict], restantes: int,
+        presupuesto: PresupuestoComentarios, vistos: set[str], solicitadas: bool,
+    ) -> dict:
+        """Expande hilos sin silenciar errores ni exceder filas o presupuesto."""
         filas: list[dict] = []
-        for parent_id, consulta in hilos:
-            actual = consulta
-            vistos_tokens: set[str] = set()
-            while actual:
+        pendientes: list[dict] = []
+        motivo_fin = None
+        for hilo in hilos:
+            actual = hilo["consulta"]
+            obtenidas = 0
+            error = None
+            motivo = None
+            tokens: set[str] = set()
+            if not solicitadas:
+                motivo = "no_solicitadas"
+            elif restantes <= len(filas):
+                motivo = "max_filas"
+            elif not actual:
+                motivo = "sin_token_respuestas"
+            while actual and motivo is None:
                 token = actual["continuation"]
-                if token in vistos_tokens:
+                if token in tokens:
+                    motivo = "token_repetido"
                     break
-                vistos_tokens.add(token)
+                tokens.add(token)
                 try:
-                    respuesta = self.siguiente(clave, ctx, **actual)
-                except YouTubeError:
+                    respuesta = self.siguiente(clave, ctx, presupuesto=presupuesto, **actual)
+                except LimiteComentarios as exc:
+                    motivo = str(exc)
+                    break
+                except (YouTubeError, requests.RequestException, ValueError) as exc:
+                    motivo, error = "error_hilo", str(exc)
+                    time.sleep(self.pausar)
                     break
                 items = self._continuaciones_items(respuesta)
-                entidades = self._entidades(respuesta)
-                for fila in _comentarios_de_items(items, entidades):
-                    fila["respuesta_a"] = parent_id
-                    fila["nivel"] = 1
+                nuevas = _comentarios_de_items(items, self._entidades(respuesta))
+                for fila in nuevas:
+                    cid = fila.get("comment_id")
+                    if cid and cid in vistos:
+                        continue
+                    if len(filas) >= restantes:
+                        motivo = "max_filas"
+                        break
+                    if cid:
+                        vistos.add(cid)
+                    fila.update(respuesta_a=hilo["comment_id"], nivel=1)
                     filas.append(fila)
+                    obtenidas += 1
                 actual = _siguiente_consulta(items)
+                if actual and len(filas) >= restantes:
+                    motivo = "max_filas"
                 time.sleep(self.pausar)
-        return filas
+            if motivo is None and obtenidas < hilo["esperadas"]:
+                motivo = "menos_respuestas_declaradas"
+            if motivo:
+                registro = {
+                    "comment_id": hilo["comment_id"], "respuestas_declaradas": hilo["esperadas"],
+                    "respuestas_obtenidas": obtenidas, "motivo": motivo,
+                }
+                if error:
+                    registro["error"] = error
+                pendientes.append(registro)
+                if solicitadas and motivo_fin is None:
+                    motivo_fin = motivo
+        return {"filas": filas, "hilos_no_expandidos": pendientes, "motivo_fin": motivo_fin}
 
 
 # --------------------------------------------------------------------------- #
@@ -750,132 +871,158 @@ def _sello() -> str:
 # CLI
 # --------------------------------------------------------------------------- #
 def _arg_comunes(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--url", required=True, help="URL del video o ID de 11 caracteres")
+    parser.add_argument("--url", nargs="+", action="extend", default=[], help="IDs o URLs; repetible, maximo 50 entradas")
+    parser.add_argument("--archivo-ids", type=Path, help="Archivo UTF-8: un ID o URL por linea; maximo 50 entradas")
     parser.add_argument("--out", default="datos", help="Carpeta de salida (por defecto: datos)")
     parser.add_argument("--json", dest="solo_json", action="store_true", help="No escribir CSV")
+
+
+def _arg_idiomas(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--lang", action="append", help="Idiomas fuente en orden, separados por coma; repetible")
+    parser.add_argument("--tipo-subtitulo", choices=["cualquiera", "manual", "asr"], default="cualquiera")
+    parser.add_argument("--tlang", help="Idioma destino: traduccion automatica solicitada a YouTube, no verificada")
+
+
+def _arg_comentarios(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--max", dest="maximo", type=int, default=200, help="Maximo de filas, incluidas respuestas")
+    parser.add_argument("--max-paginas", type=int, default=MAX_PAGINAS, help="Paginas /next por video: 1-60")
+    parser.add_argument("--max-peticiones", type=int, default=MAX_PETICIONES, help="Intentos HTTP /next por video: 1-120")
+    parser.add_argument("--con-respuestas", action="store_true")
+    parser.add_argument("--orden", choices=["newest", "top"], default="newest",
+                        help="newest: mas recientes; top: jerarquia de interfaz; ninguno garantiza exhaustividad")
+
+
+def _entradas(args: argparse.Namespace) -> list[str]:
+    entradas = list(args.url)
+    if len(entradas) > MAX_VIDEOS:
+        raise YouTubeError("El lote admite como maximo 50 entradas.")
+    if args.archivo_ids:
+        with args.archivo_ids.open(encoding="utf-8-sig") as archivo:
+            for linea in archivo:
+                valor = linea.strip()
+                if valor and not valor.startswith("#"):
+                    entradas.append(valor)
+                    if len(entradas) > MAX_VIDEOS:
+                        raise YouTubeError("El lote admite como maximo 50 entradas.")
+    if not entradas:
+        raise YouTubeError("Indicar --url o --archivo-ids con al menos una entrada.")
+    return entradas
+
+
+def _operacion(cliente: ClienteYouTube, video_id: str, comando: str, args: argparse.Namespace) -> dict:
+    if comando == "metadatos":
+        datos = cliente.metadatos(video_id)
+        datos["fuente"] = "youtube.com/watch (ytInitialPlayerResponse)"
+    elif comando == "pistas":
+        datos = {"video_id": video_id, "metodo": "InnerTube player", "pistas": cliente.pistas_subtitulo(video_id)}
+    elif comando == "transcripcion":
+        idiomas = [codigo.strip() for valor in (args.lang or []) for codigo in valor.split(",") if codigo.strip()]
+        datos = cliente.transcripcion(video_id, idiomas or None, tipo=args.tipo_subtitulo, tlang=args.tlang)
+    else:
+        datos = cliente.comentarios(
+            video_id, maximo=args.maximo, con_respuestas=args.con_respuestas, orden=args.orden,
+            max_paginas=args.max_paginas, max_peticiones=args.max_peticiones,
+        )
+    datos["capturado_en_utc"] = _sello()
+    salida = Path(args.out)
+    _escribir_json(salida / f"{video_id}_{comando}.json", datos)
+    if not args.solo_json and comando in {"transcripcion", "comentarios"}:
+        filas = datos["segmentos"] if comando == "transcripcion" else datos["comentarios"]
+        columnas = COLUMNAS_SEGMENTOS if comando == "transcripcion" else COLUMNAS_COMENTARIOS
+        _escribir_csv(salida / f"{video_id}_{comando}.csv", filas, columnas)
+    return datos
+
+
+def _ejecutar_video(cliente: ClienteYouTube, video_id: str, args: argparse.Namespace) -> dict:
+    if args.comando != "todo":
+        return _operacion(cliente, video_id, args.comando, args)
+    resultado = {"video_id": video_id}
+    for comando in ("metadatos", "transcripcion", "comentarios"):
+        try:
+            resultado[comando] = _operacion(cliente, video_id, comando, args)
+        except (YouTubeError, requests.RequestException, ValueError) as exc:
+            error = {"video_id": video_id, "error": str(exc), "capturado_en_utc": _sello()}
+            resultado[comando] = error
+            _escribir_json(Path(args.out) / f"{video_id}_{comando}.json", error)
+    return resultado
+
+
+def _errores_resultado(datos: dict) -> list[str]:
+    errores = list(datos.get("errores") or [])
+    if "error" in datos:
+        errores.append(datos["error"])
+    errores.extend(h["error"] for h in datos.get("hilos_no_expandidos", []) if "error" in h)
+    for comando in ("metadatos", "transcripcion", "comentarios"):
+        if isinstance(datos.get(comando), dict):
+            errores.extend(_errores_resultado(datos[comando]))
+    return errores
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="comando", required=True)
-
-    p_meta = sub.add_parser("metadatos", help="Metadatos del video")
-    _arg_comunes(p_meta)
-
-    p_tr = sub.add_parser("transcripcion", help="Transcripcion con marca de tiempo")
-    _arg_comunes(p_tr)
-    p_tr.add_argument("--lang", help="Codigo de idioma (por defecto: subtitulo manual o el primero)")
-
-    p_com = sub.add_parser("comentarios", help="Comentarios del video")
-    _arg_comunes(p_com)
-    p_com.add_argument("--max", dest="maximo", type=int, default=200, help="Maximo de comentarios")
-    p_com.add_argument("--con-respuestas", action="store_true", help="Incluir respuestas a comentarios")
-    p_com.add_argument(
-        "--orden",
-        choices=["newest", "top"],
-        default="newest",
-        help="Criterio: newest recorre la lista completa; top usa la jerarquia de la interfaz",
-    )
-
-    p_todo = sub.add_parser("todo", help="Metadatos, transcripcion y comentarios")
-    _arg_comunes(p_todo)
-    p_todo.add_argument("--max", dest="maximo", type=int, default=200)
-    p_todo.add_argument("--lang")
-    p_todo.add_argument("--con-respuestas", action="store_true")
-
+    for comando in ("metadatos", "pistas", "transcripcion", "comentarios", "todo"):
+        parte = sub.add_parser(comando)
+        _arg_comunes(parte)
+        if comando in {"transcripcion", "todo"}:
+            _arg_idiomas(parte)
+        if comando in {"comentarios", "todo"}:
+            _arg_comentarios(parte)
     args = parser.parse_args(argv)
     try:
-        video_id = extraer_id_video(args.url)
-    except YouTubeError as exc:
+        entradas = _entradas(args)
+        if args.comando in {"comentarios", "todo"} and (
+            args.maximo < 1 or not 1 <= args.max_paginas <= MAX_PAGINAS
+            or not 1 <= args.max_peticiones <= MAX_PETICIONES
+        ):
+            raise YouTubeError("Limites: max >= 1, max-paginas 1-60, max-peticiones 1-120.")
+    except (YouTubeError, OSError, UnicodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-
+    lote = len(entradas) > 1 or args.archivo_ids is not None
     cliente = ClienteYouTube()
-    salida = Path(args.out)
+    resultados = []
+    for posicion, entrada in enumerate(entradas, 1):
+        registro = {"posicion": posicion, "entrada": entrada}
+        try:
+            video_id = extraer_id_video(entrada)
+        except YouTubeError as exc:
+            if not lote:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            registro.update(ok=False, error=str(exc))
+            resultados.append(registro)
+            continue
+        registro["video_id"] = video_id
+        try:
+            datos = _ejecutar_video(cliente, video_id, args)
+            errores = _errores_resultado(datos)
+            registro.update(ok=not errores, resultado=datos)
+            if errores:
+                registro["error"] = "; ".join(errores)
+            if not lote:
+                print(json.dumps(datos, ensure_ascii=False, indent=2))
+                return 1 if errores else 0
+        except (YouTubeError, requests.RequestException, ValueError, OSError) as exc:
+            registro.update(ok=False, error=str(exc))
+            if not lote:
+                print(f"error: {exc}", file=sys.stderr)
+                return 3 if isinstance(exc, requests.RequestException) else 1
+        resultados.append(registro)
+        if posicion < len(entradas):
+            time.sleep(cliente.pausar)
+    recibo = {
+        "comando": args.comando, "capturado_en_utc": _sello(), "max_videos": MAX_VIDEOS,
+        "total": len(resultados), "exitosos": sum(r["ok"] for r in resultados), "resultados": resultados,
+        "metodo": "Lectura publica anonima; procesamiento secuencial, sin evasion de bloqueos",
+    }
     try:
-        if args.comando == "metadatos":
-            datos = cliente.metadatos(video_id)
-            datos["capturado_en_utc"] = _sello()
-            datos["fuente"] = "youtube.com/watch (ytInitialPlayerResponse)"
-            _escribir_json(salida / f"{video_id}_metadatos.json", datos)
-            print(json.dumps(datos, ensure_ascii=False, indent=2))
-            return 0
-
-        if args.comando == "transcripcion":
-            datos = cliente.transcripcion(video_id, args.lang)
-            datos["capturado_en_utc"] = _sello()
-            _escribir_json(salida / f"{video_id}_transcripcion.json", datos)
-            if not args.solo_json:
-                _escribir_csv(
-                    salida / f"{video_id}_transcripcion.csv", datos["segmentos"], COLUMNAS_SEGMENTOS
-                )
-            print(
-                f"transcripcion: {len(datos['segmentos'])} segmentos "
-                f"(idioma {datos['idioma']}, automatica={datos['automatica']})"
-            )
-            return 0
-
-        if args.comando == "comentarios":
-            datos = cliente.comentarios(
-                video_id,
-                maximo=args.maximo,
-                con_respuestas=args.con_respuestas,
-                orden=args.orden,
-            )
-            datos["capturado_en_utc"] = _sello()
-            _escribir_json(salida / f"{video_id}_comentarios.json", datos)
-            if not args.solo_json:
-                _escribir_csv(
-                    salida / f"{video_id}_comentarios.csv",
-                    datos["comentarios"],
-                    COLUMNAS_COMENTARIOS,
-                )
-            print(
-                f"comentarios: {datos['obtenidos']} de {datos['comentarios_declarados']} declarados"
-            )
-            return 0
-
-        if args.comando == "todo":
-            datos = cliente.metadatos(video_id)
-            datos["capturado_en_utc"] = _sello()
-            _escribir_json(salida / f"{video_id}_metadatos.json", datos)
-            try:
-                tr = cliente.transcripcion(video_id, args.lang)
-                tr["capturado_en_utc"] = _sello()
-                _escribir_json(salida / f"{video_id}_transcripcion.json", tr)
-                if not args.solo_json:
-                    _escribir_csv(
-                        salida / f"{video_id}_transcripcion.csv", tr["segmentos"], COLUMNAS_SEGMENTOS
-                    )
-            except YouTubeError as exc:
-                tr = {"video_id": video_id, "error": str(exc)}
-                _escribir_json(salida / f"{video_id}_transcripcion.json", tr)
-            try:
-                com = cliente.comentarios(
-                    video_id, maximo=args.maximo, con_respuestas=args.con_respuestas
-                )
-                com["capturado_en_utc"] = _sello()
-                _escribir_json(salida / f"{video_id}_comentarios.json", com)
-                if not args.solo_json:
-                    _escribir_csv(
-                        salida / f"{video_id}_comentarios.csv",
-                        com["comentarios"],
-                        COLUMNAS_COMENTARIOS,
-                    )
-            except YouTubeError as exc:
-                com = {"video_id": video_id, "error": str(exc)}
-                _escribir_json(salida / f"{video_id}_comentarios.json", com)
-            print(json.dumps(datos, ensure_ascii=False, indent=2))
-            print(f"transcripcion: {'error' if 'error' in tr else str(len(tr['segmentos'])) + ' segmentos'}")
-            print(f"comentarios: {'error' if 'error' in com else str(com['obtenidos'])}")
-            return 0
-    except YouTubeError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _escribir_json(Path(args.out) / f"lote_{args.comando}.json", recibo)
+    except OSError as exc:
+        print(f"error al escribir recibo: {exc}", file=sys.stderr)
         return 1
-    except requests.RequestException as exc:
-        print(f"error de red: {exc}", file=sys.stderr)
-        return 3
-    return 0
+    print(json.dumps(recibo, ensure_ascii=False, indent=2))
+    return 0 if all(r["ok"] for r in resultados) else 1
 
 
 if __name__ == "__main__":

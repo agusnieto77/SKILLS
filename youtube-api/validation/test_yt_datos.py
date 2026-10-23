@@ -8,6 +8,11 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+import contextlib
+import io
+import json
+import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 
@@ -297,6 +302,315 @@ class TestCliente(unittest.TestCase):
         reproductor = [u for m, u in sesion.llamadas if m == "POST" and "/player" in u]
         self.assertEqual(len(fichas), 1)
         self.assertEqual(len(reproductor), 1)
+
+
+def pagina_comentarios(ids=(), siguiente=None, respuestas=None, cabecera=None):
+    items = []
+    mutaciones = []
+    for cid in ids:
+        vm = {"commentId": cid, "commentKey": cid}
+        hilo = {"commentViewModel": {"commentViewModel": vm}}
+        if respuestas and cid in respuestas:
+            hilo["replies"] = {"commentRepliesRenderer": {"contents": [
+                {"continuationItemRenderer": {"continuationEndpoint": {
+                    "continuationCommand": {"token": respuestas[cid]}
+                }}}
+            ]}}
+        items.append({"commentThreadRenderer": hilo})
+        mutaciones.append({"entityKey": cid, "payload": {"commentEntityPayload": {
+            "properties": {"commentId": cid, "content": {"content": f"Texto {cid}"}},
+            "toolbar": {"replyCount": 2 if respuestas and cid in respuestas else 0},
+        }}})
+    if cabecera:
+        items.insert(0, {"commentsHeaderRenderer": cabecera})
+    if siguiente:
+        items.append({"continuationItemRenderer": {"continuationEndpoint": {
+            "continuationCommand": {"token": siguiente}
+        }}})
+    return {
+        "onResponseReceivedEndpoints": [{"appendContinuationItemsAction": {"continuationItems": items}}],
+        "frameworkUpdates": {"entityBatchUpdate": {"mutations": mutaciones}},
+    }
+
+
+def cliente_comentarios(posts):
+    html = '"INNERTUBE_API_KEY":"clave" var ytInitialData = ' + json.dumps({
+        "sectionIdentifier": "comment-item-section",
+        "continuationCommand": {"token": "inicio"},
+    }) + ";"
+    sesion = FakeSesion(gets=[FakeRespuesta(texto=html)], posts=posts)
+    return Y.ClienteYouTube(sesion=sesion, pausar=0), sesion
+
+
+class TestCobertura(unittest.TestCase):
+    def test_limite_filas_evitar_descarga_respuestas(self):
+        cliente, sesion = cliente_comentarios([FakeRespuesta(cuerpo=pagina_comentarios(
+            ["a", "b"], siguiente="otra", respuestas={"a": "ra", "b": "rb"}
+        ))])
+        datos = cliente.comentarios(VIDEO_ID, maximo=1, con_respuestas=True)
+        self.assertEqual(datos["obtenidos"], 1)
+        self.assertTrue(datos["parcial"])
+        self.assertEqual(datos["motivo_fin"], "max_filas")
+        self.assertEqual({h["comment_id"] for h in datos["hilos_no_expandidos"]}, {"a", "b"})
+        self.assertEqual(len(sesion.llamadas), 2)
+
+    def test_error_hilo_conserva_filas_y_continua_otro(self):
+        cliente, _ = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a", "b"], respuestas={"a": "ra", "b": "rb"})),
+            FakeRespuesta(503),
+            FakeRespuesta(cuerpo=pagina_comentarios(["r1", "r2"])),
+        ])
+        datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(datos["obtenidos"], 4)
+        self.assertTrue(datos["parcial"])
+        self.assertEqual(datos["hilos_no_expandidos"][0]["comment_id"], "a")
+        self.assertIn("503", datos["hilos_no_expandidos"][0]["error"])
+        self.assertEqual(datos["presupuesto"]["peticiones_consumidas"], 3)
+
+    def test_limite_paginas_incluye_cambio_orden(self):
+        cabecera = {"sortMenu": {"sortFilterSubMenuRenderer": {"subMenuItems": [
+            {}, {"continuationCommand": {"token": "newest"}}
+        ]}}}
+        cliente, _ = cliente_comentarios([FakeRespuesta(cuerpo=pagina_comentarios(cabecera=cabecera))])
+        datos = cliente.comentarios(VIDEO_ID, max_paginas=1)
+        self.assertEqual(datos["motivo_fin"], "max_paginas")
+        self.assertEqual(datos["presupuesto"]["paginas_consumidas"], 1)
+
+    def test_retry_cuenta_y_no_supera_presupuesto(self):
+        cliente, _ = cliente_comentarios([FakeRespuesta(429)])
+        with patch.object(Y.time, "sleep"):
+            datos = cliente.comentarios(VIDEO_ID, max_peticiones=1)
+        self.assertEqual(datos["motivo_fin"], "max_peticiones")
+        self.assertEqual(datos["presupuesto"]["peticiones_consumidas"], 1)
+
+    def test_token_repetido_no_equivale_a_fin_normal(self):
+        cliente, _ = cliente_comentarios([FakeRespuesta(cuerpo=pagina_comentarios(["a"], siguiente="inicio"))])
+        self.assertEqual(cliente.comentarios(VIDEO_ID)["motivo_fin"], "token_repetido")
+
+    def test_fin_natural_no_promete_total_declarado(self):
+        cliente, _ = cliente_comentarios([FakeRespuesta(cuerpo=pagina_comentarios(
+            ["a"], cabecera={"countText": {"simpleText": "5 comentarios"}}
+        ))])
+        datos = cliente.comentarios(VIDEO_ID)
+        self.assertEqual(datos["motivo_fin"], "sin_continuacion")
+        self.assertTrue(datos["parcial"])
+
+    def test_error_pagina_conserva_resultado_parcial(self):
+        cliente, _ = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], siguiente="otra")), FakeRespuesta(500)
+        ])
+        datos = cliente.comentarios(VIDEO_ID)
+        self.assertEqual(datos["obtenidos"], 1)
+        self.assertEqual(datos["motivo_fin"], "error_pagina")
+        self.assertIn("500", datos["errores"][0])
+
+    def test_respuestas_se_truncan_dentro_de_pagina(self):
+        cliente, sesion = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], respuestas={"a": "ra"})),
+            FakeRespuesta(cuerpo=pagina_comentarios(["r1", "r2", "r3"], siguiente="mas")),
+        ])
+        datos = cliente.comentarios(VIDEO_ID, maximo=2, con_respuestas=True)
+        self.assertEqual(datos["obtenidos"], 2)
+        self.assertEqual(datos["hilos_no_expandidos"][0]["motivo"], "max_filas")
+        self.assertEqual(len(sesion.llamadas), 3)
+
+    def test_limites_no_validos_no_hacen_red(self):
+        for kwargs in ({"maximo": 0}, {"max_paginas": 61}, {"max_peticiones": 121}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(Y.YouTubeError):
+                Y.ClienteYouTube(sesion=FakeSesion()).comentarios(VIDEO_ID, **kwargs)
+
+
+    def test_tope_predeterminado_60_paginas(self):
+        paginas = [FakeRespuesta(cuerpo=pagina_comentarios([f"c{i}"], siguiente=f"t{i}")) for i in range(60)]
+        cliente, sesion = cliente_comentarios(paginas)
+        datos = cliente.comentarios(VIDEO_ID)
+        self.assertEqual(datos["motivo_fin"], "max_paginas")
+        self.assertEqual(datos["presupuesto"]["paginas_consumidas"], 60)
+        self.assertEqual(len(sesion.llamadas), 61)
+
+    def test_presupuesto_compartido_con_respuestas(self):
+        cliente, sesion = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], respuestas={"a": "ra"})),
+        ])
+        datos = cliente.comentarios(VIDEO_ID, con_respuestas=True, max_paginas=1)
+        self.assertEqual(datos["hilos_no_expandidos"][0]["motivo"], "max_paginas")
+        self.assertEqual(len(sesion.llamadas), 2)
+
+    def test_respuesta_parcial_y_error_en_segunda_pagina(self):
+        cliente, _ = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], respuestas={"a": "ra"})),
+            FakeRespuesta(cuerpo=pagina_comentarios(["r1"], siguiente="otra")),
+            FakeRespuesta(500),
+        ])
+        datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(datos["obtenidos"], 2)
+        hilo = datos["hilos_no_expandidos"][0]
+        self.assertEqual(hilo["respuestas_obtenidas"], 1)
+        self.assertEqual(hilo["motivo"], "error_hilo")
+
+    def test_respuestas_deduplicadas_y_token_repetido(self):
+        cliente, _ = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina_comentarios(["a"], respuestas={"a": "ra"})),
+            FakeRespuesta(cuerpo=pagina_comentarios(["r1", "r1"], siguiente="ra")),
+        ])
+        datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(datos["obtenidos"], 2)
+        self.assertEqual(datos["hilos_no_expandidos"][0]["motivo"], "token_repetido")
+
+    def test_retry_exitoso_cuenta_dos_intentos_y_una_pagina(self):
+        cliente, _ = cliente_comentarios([FakeRespuesta(429), FakeRespuesta(cuerpo=pagina_comentarios(["a"]))])
+        with patch.object(Y.time, "sleep"):
+            datos = cliente.comentarios(VIDEO_ID)
+        self.assertEqual(datos["presupuesto"]["peticiones_consumidas"], 2)
+        self.assertEqual(datos["presupuesto"]["paginas_consumidas"], 1)
+        self.assertFalse(datos["parcial"])
+
+    def test_hilos_no_solicitados_y_respuestas_menores_declaradas(self):
+        pagina = pagina_comentarios(["a"], respuestas={"a": "ra"})
+        cliente, _ = cliente_comentarios([FakeRespuesta(cuerpo=pagina)])
+        self.assertEqual(cliente.comentarios(VIDEO_ID)["hilos_no_expandidos"][0]["motivo"], "no_solicitadas")
+        cliente, _ = cliente_comentarios([
+            FakeRespuesta(cuerpo=pagina), FakeRespuesta(cuerpo=pagina_comentarios(["r1"]))
+        ])
+        datos = cliente.comentarios(VIDEO_ID, con_respuestas=True)
+        self.assertEqual(datos["hilos_no_expandidos"][0]["motivo"], "menos_respuestas_declaradas")
+
+
+class TestIdiomasNuevos(unittest.TestCase):
+    def test_preferencias_ordenadas_y_tipo(self):
+        pistas = [
+            {"languageCode": "en", "kind": None},
+            {"languageCode": "es", "kind": "asr"},
+            {"languageCode": "es", "kind": None},
+        ]
+        self.assertEqual(Y._elegir_pista(pistas, ["fr", "es", "en"], "asr"), pistas[1])
+        self.assertEqual(Y._elegir_pista(pistas, ["es", "en"]), pistas[2])
+        with self.assertRaises(Y.YouTubeError):
+            Y._elegir_pista(pistas, ["fr"], "manual")
+
+    def cliente(self, traducible=True):
+        base = "https://www.youtube.com/api/timedtext?lang=en&sig=a%2Bb&tlang=fr"
+        pista = {"languageCode": "en", "baseUrl": base, "isTranslatable": traducible}
+        cliente = Y.ClienteYouTube(sesion=FakeSesion(gets=[FakeRespuesta(texto=TIMEDTEXT_V3)]), pausar=0)
+        cliente._html[VIDEO_ID] = '"INNERTUBE_API_KEY":"clave"'
+        cliente._player[VIDEO_ID] = {"captions": {"playerCaptionsTracklistRenderer": {"captionTracks": [pista]}}}
+        return cliente
+
+    def test_traduccion_conserva_firma_y_declara_metodo(self):
+        cliente = self.cliente()
+        datos = cliente.transcripcion(VIDEO_ID, ["en"], tlang="es")
+        self.assertEqual(cliente.sesion.llamadas[0][1],
+                         "https://www.youtube.com/api/timedtext?lang=en&sig=a%2Bb&tlang=es")
+        self.assertTrue(datos["traducida"])
+        self.assertEqual((datos["idioma_fuente"], datos["idioma_destino"]), ("en", "es"))
+        self.assertEqual(datos["metodo_traduccion"], "traduccion_automatica_youtube_tlang")
+        self.assertFalse(datos["traduccion_verificada"])
+
+    def test_pista_no_traducible_no_hace_red(self):
+        cliente = self.cliente(False)
+        with self.assertRaises(Y.YouTubeError):
+            cliente.transcripcion(VIDEO_ID, tlang="es")
+        self.assertEqual(cliente.sesion.llamadas, [])
+
+    def test_original_declarada_sin_traduccion(self):
+        datos = self.cliente().transcripcion(VIDEO_ID)
+        self.assertFalse(datos["traducida"])
+        self.assertEqual(datos["idioma_fuente"], "en")
+
+
+    def test_traduccion_vacia_o_http_error_no_devuelve_original(self):
+        for respuesta in (FakeRespuesta(texto=""), FakeRespuesta(403), FakeRespuesta(texto="<timedtext/>")):
+            cliente = self.cliente()
+            cliente.sesion.gets = [respuesta]
+            with self.subTest(status=respuesta.status_code), self.assertRaises(Y.YouTubeError):
+                cliente.transcripcion(VIDEO_ID, tlang="es")
+            self.assertEqual(len(cliente.sesion.llamadas), 1)
+
+    def test_tlang_no_valido_antes_de_red(self):
+        cliente = self.cliente()
+        with self.assertRaises(Y.YouTubeError):
+            cliente.transcripcion(VIDEO_ID, tlang="es&sig=otro")
+        self.assertEqual(cliente.sesion.llamadas, [])
+
+
+class TestLotesCLI(unittest.TestCase):
+    def ejecutar(self, argv):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return Y.main(argv)
+
+    def test_archivo_y_urls_con_error_independiente(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            ids = Path(carpeta) / "ids.txt"
+            ids.write_text("# inventario\nno-valido\nabcdefghijk\n", encoding="utf-8")
+            with patch.object(Y.ClienteYouTube, "metadatos", return_value={"titulo": "T"}) as meta:
+                codigo = self.ejecutar(["metadatos", "--url", VIDEO_ID, "--archivo-ids", str(ids), "--out", carpeta])
+            datos = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+            self.assertEqual(codigo, 1)
+            self.assertEqual(meta.call_count, 2)
+            self.assertEqual([r["ok"] for r in datos["resultados"]], [True, False, True])
+            self.assertIn("resultado", datos["resultados"][0])
+            self.assertIn("error", datos["resultados"][1])
+
+    def test_error_red_no_aborta_lote(self):
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+            Y.ClienteYouTube, "metadatos",
+            side_effect=[Y.requests.ConnectionError("sin red"), {"titulo": "T"}]
+        ):
+            codigo = self.ejecutar(["metadatos", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+            datos = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+            self.assertEqual(codigo, 1)
+            self.assertEqual([r["ok"] for r in datos["resultados"]], [False, True])
+
+    def test_lote_superior_a_50_se_rechaza_antes_de_red(self):
+        with patch.object(Y.ClienteYouTube, "metadatos") as meta:
+            self.assertEqual(self.ejecutar(["metadatos", "--url", *([VIDEO_ID] * 51)]), 2)
+            meta.assert_not_called()
+
+    def test_cli_pistas_y_opciones_idioma(self):
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+            Y.ClienteYouTube, "pistas_subtitulo", return_value=[{"idioma": "es", "automatica": True}]
+        ):
+            self.assertEqual(self.ejecutar(["pistas", "--url", VIDEO_ID, "--out", carpeta]), 0)
+            self.assertTrue((Path(carpeta) / f"{VIDEO_ID}_pistas.json").exists())
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+            Y.ClienteYouTube, "transcripcion", return_value={"segmentos": [], "idioma": "es", "automatica": False}
+        ) as tr:
+            self.assertEqual(self.ejecutar([
+                "transcripcion", "--url", VIDEO_ID, "--lang", "en,fr", "--lang", "es",
+                "--tipo-subtitulo", "manual", "--tlang", "es", "--out", carpeta,
+            ]), 0)
+            tr.assert_called_once_with(VIDEO_ID, ["en", "fr", "es"], tipo="manual", tlang="es")
+
+
+    def test_archivo_solo_y_limite_exacto_50(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            archivo = Path(carpeta) / "ids.txt"
+            archivo.write_text("\n".join([VIDEO_ID] * 50), encoding="utf-8-sig")
+            with patch.object(Y.ClienteYouTube, "metadatos", return_value={"titulo": "T"}) as meta, patch.object(Y.time, "sleep"):
+                codigo = self.ejecutar(["metadatos", "--archivo-ids", str(archivo), "--out", carpeta])
+            recibo = json.loads((Path(carpeta) / "lote_metadatos.json").read_text(encoding="utf-8"))
+            self.assertEqual(codigo, 0)
+            self.assertEqual(meta.call_count, 50)
+            self.assertEqual(recibo["total"], 50)
+
+    def test_todo_aisla_error_de_cada_operacion(self):
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+            Y.ClienteYouTube, "metadatos", side_effect=Y.YouTubeError("no metadatos")
+        ), patch.object(
+            Y.ClienteYouTube, "transcripcion", side_effect=Y.requests.ConnectionError("sin red")
+        ), patch.object(Y.ClienteYouTube, "comentarios", return_value={"comentarios": [], "obtenidos": 0}) as com:
+            codigo = self.ejecutar(["todo", "--url", VIDEO_ID, "--max-paginas", "2", "--out", carpeta])
+            self.assertEqual(codigo, 1)
+            self.assertTrue((Path(carpeta) / f"{VIDEO_ID}_comentarios.json").exists())
+            com.assert_called_once_with(
+                VIDEO_ID, maximo=200, con_respuestas=False, orden="newest", max_paginas=2, max_peticiones=120
+            )
+
+    def test_archivo_inexistente_y_limites_invalidos_no_hacen_red(self):
+        with patch.object(Y.ClienteYouTube, "pagina_watch") as ficha:
+            self.assertEqual(self.ejecutar(["metadatos", "--archivo-ids", "no-existe/ids.txt"]), 2)
+            self.assertEqual(self.ejecutar(["comentarios", "--url", VIDEO_ID, "--max", "0"]), 2)
+            ficha.assert_not_called()
 
 
 if __name__ == "__main__":

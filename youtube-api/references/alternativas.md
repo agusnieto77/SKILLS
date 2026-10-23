@@ -1,6 +1,6 @@
 # Alternativas para obtener datos de YouTube
 
-Todas las vías verificadas el 22-10-2026 contra el video `j3ZIM9UaXlE` ("La IA debería hacernos trabajar menos (NO MÁS)", canal midudev). Lo que sigue describe el comportamiento observado, no lo que promete cada documentación.
+Las observaciones históricas del 22-10-2026 corresponden al video `j3ZIM9UaXlE` ("La IA debería hacernos trabajar menos (NO MÁS)", canal midudev). Las opciones nuevas del CLI se verifican offline; las recetas de inventario no constituyen nuevas capturas.
 
 ## 1. API interna `youtubei` (InnerTube)
 
@@ -17,7 +17,7 @@ Es la API que usa el propio reproductor de YouTube. Se llama sin cuenta: la clav
 Claves que hacen funcionar la vía:
 
 - El **cliente `ANDROID`** es el que devuelve `OK` en `player`. Con `WEB` el mismo endpoint responde `UNPLAYABLE` (detección de automatización). Cambiar `clientName` cambia el resultado.
-- La transcripción se pide **con la URL base que devuelve la pista**, sin modificarla: agregar `fmt=json3` no cambia la respuesta, porque la firma cubre los parámetros. En la práctica el servidor devuelve siempre XML `timedtext`.
+- La transcripción original se pide con la URL firmada de la pista: agregar `fmt=json3` no produjo JSON en la captura histórica. La opción explícita `--tlang` conserva los parámetros firmados y agrega/reemplaza solo el idioma destino: es una solicitud de traducción automática a YouTube, no una garantía de compatibilidad. Los fixtures no validan la aceptación de la firma ni el idioma servido; la salida lo marca con `traduccion_verificada=false`.
 - Las respuestas a comentarios viven en `frameworkUpdates.entityBatchUpdate.mutations` con `commentEntityPayload`; el hilo y la respuesta se enlazan por `commentKey`, y la entidad de payload se reconoce porque su `entityKey` es **prefijo** del `commentKey`.
 
 ### Orden de comentarios
@@ -27,9 +27,9 @@ El token de continuación inicial (sección `comment-item-section`) devuelve la 
 | Criterio | Token | Cobertura observada (229 comentarios declarados) |
 |---|---|---|
 | "Destacados" (`sortMenu.subMenuItems[0]`) | `continuationCommand` de la sección de orden | 154 comentarios de primer nivel: es la jerarquía de la interfaz, un subconjunto |
-| "Más recientes" (`sortMenu.subMenuItems[1]`) | `continuationCommand` de la sección de orden | 168 comentarios de primer nivel: recorre la lista completa |
+| "Más recientes" (`sortMenu.subMenuItems[1]`) | `continuationCommand` de la sección de orden | 168 comentarios de primer nivel en la captura histórica |
 
-La unión de ambos criterios da 168: "Destacados" está contenido en "Más recientes". Para cobertura completa usar "Más recientes"; para replicar lo que ve un usuario en pantalla, "Destacados".
+La unión observada dio 168: "Destacados" estaba contenido en "Más recientes". Preferir este último para mayor cobertura, sin prometer totalidad frente a topes, moderación, eliminación, cambios durante captura o fallos por hilo.
 
 ### Límites
 
@@ -92,3 +92,45 @@ Es decir: las instancias públicas están degradadas o bloquean por IP. No convi
 ## 5. `oEmbed`
 
 `GET https://www.youtube.com/oembed?url=URL&format=json` devuelve, sin clave y sin paginación: título, autor, URL del canal, miniatura y el `iframe` de inserción. Sirve para identificar un video o montar un embed, no para analizar contenido.
+
+## Inventario acotado de playlist o canal
+
+Para preparar una muestra de hasta 50 IDs sin descargar videos:
+
+```bash
+# Playlist pública; --playlist-end acota el inventario antes de enviarlo al CLI
+yt-dlp --flat-playlist --skip-download --playlist-end 50 \
+  --print "%(id)s" "https://www.youtube.com/playlist?list=PLAYLIST_ID" > ids.txt
+
+# Pestaña de videos de un canal público
+yt-dlp --flat-playlist --skip-download --playlist-end 50 \
+  --print "%(id)s" "https://www.youtube.com/@CANAL/videos" > ids.txt
+
+python youtube-api/assets/yt_datos.py metadatos --archivo-ids ids.txt --out datos
+```
+
+Guardar el archivo como UTF-8 (en Windows PowerShell antiguo la redirección puede generar UTF-16: usar una salida UTF-8). Una línea por ID o URL; líneas vacías y `#` se ignoran. Revisar el inventario: una lista puede contener videos privados, eliminados o duplicados; el recibo conserva error/posición por entrada sin detener el resto. No sustituir IDs ausentes ni afirmar que el inventario representa todos los videos del canal. Procesamiento secuencial, máximo 50 entradas, con pausas y presupuesto por video; no dividir campañas para eludir límites, cuotas o bloqueos. No se utiliza SQLite.
+
+Para un canal con clave de proyecto propia, usar uploads → `playlistItems.list` → `videos.list`, según [API oficial](api-oficial.md#inventario-de-un-canal-o-playlist).
+
+## Contrato de salidas del CLI
+
+Todas las salidas JSON de operación llevan método/fuente y fecha `capturado_en_utc` cuando la operación se completa. En `todo`, cada error se guarda en su propio JSON con ID y fecha; el recibo de lote preserva también los resultados obtenidos.
+
+### Comentarios y cobertura
+
+- `parcial`: verdadero ante truncamiento, error, ciclo de token, hilos conocidos no expandidos, orden `top` o menos filas que el total declarado. Falso significa que no se detectó una de esas condiciones, **no** certifica totalidad.
+- `motivo_fin`: `sin_continuacion`, `max_filas`, `max_paginas`, `max_peticiones`, `token_repetido`, `error_pagina` o el primer motivo de hilo cuando el recorrido principal terminó naturalmente.
+- `presupuesto`: `max_filas`, `max_paginas` (máximo 60), `max_peticiones` (máximo 120), `paginas_consumidas` y `peticiones_consumidas`. Páginas = respuestas JSON exitosas de `/next`; peticiones = intentos HTTP de `/next`, incluidos errores y el único reintento ante 429. Orden, comentarios y respuestas comparten presupuesto; `watch`, `player` y `timedtext` quedan fuera.
+- `hilos_no_expandidos`: lista de `{comment_id, respuestas_declaradas, respuestas_obtenidas, motivo, error?}`. Motivos: `no_solicitadas`, `max_filas`, `max_paginas`, `max_peticiones`, `sin_token_respuestas`, `token_repetido`, `error_hilo` o `menos_respuestas_declaradas`. Un error de hilo no borra respuestas ya obtenidas ni impide intentar el siguiente dentro del presupuesto.
+- `errores`: mensajes de fallos del recorrido principal. Los errores de hilo permanecen asociados a su ID; no se silencian.
+- Se priorizan padres antes de respuestas. El límite de filas se aplica al incorporar cada fila y antes de solicitar otra página/hilo; una página ya recibida puede contener filas descartadas. Se informan hilos conocidos de esa página, incluidos padres descartados. No se conocen los hilos de páginas no solicitadas.
+- Comparar `obtenidos` con `comentarios_declarados`, sin asumir que el total declarado (posiblemente abreviado o cambiante) coincide con lo accesible.
+
+### Idiomas y traducción
+
+`pistas` expone las pistas originales publicadas, sin descargar texto. `--lang es,en` selecciona en orden y `--tipo-subtitulo manual|asr|cualquiera` filtra pistas fuente; no sustituye una preferencia explícita por un idioma arbitrario. En el JSON de transcripción, `automatica` describe ASR en la fuente, no si la traducción fue automática. `idioma_fuente` conserva la pista; `idioma_destino` e `idioma` indican el destino solicitado (o la fuente sin traducción). `traducida=true` y `metodo_traduccion=traduccion_automatica_youtube_tlang` declaran la solicitud a YouTube; `traduccion_verificada=false` y `aviso_traduccion` impiden confundirla con una pista original o con idioma efectivamente comprobado. Los errores HTTP, XML inválido y archivos vacíos se informan sin fallback al original. La calidad/idioma de una traducción exige revisión independiente.
+
+### Lotes
+
+`lote_<comando>.json`: `max_videos=50`, `total`, `exitosos`, método y fecha; `resultados` conserva `{posicion, entrada, video_id?, ok, resultado?, error?}` por entrada. Un fallo no aborta las restantes. `resultado` conserva también resultados parciales; `ok=false` indica errores de operación, red o hilo, no meramente alcanzar un límite de cobertura. Las entradas inválidas cuentan para el máximo y quedan registradas.

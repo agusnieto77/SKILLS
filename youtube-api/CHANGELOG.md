@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2 — 2026-10-22
+
+- Cobertura de comentarios estructurada: `parcial`, `motivo_fin`, presupuesto compartido por orden/padres/respuestas, hilos no expandidos y errores por hilo; sin descarte silencioso de errores.
+- Tope de 60 páginas visible y configurable a la baja; hasta 120 intentos HTTP de `/next`, incluidos reintentos 429. El máximo de filas se aplica durante la recolección, antes de descargar respuestas adicionales.
+- Lotes secuenciales de hasta 50 IDs/URLs mediante `--url` múltiple/repetible y `--archivo-ids`, con recibo y resultado/error por entrada; fallos de `todo` aislados por operación.
+- Comando `pistas`, preferencias `--lang` ordenadas/repetibles, `--tipo-subtitulo` y traducción opcional `--tlang`. Conserva fuente/destino y declara traducción automática de YouTube no verificada en red.
+- Referencias para inventario acotado mediante `yt-dlp --flat-playlist` y ruta oficial uploads → `playlistItems.list` → `videos.list` (hasta 50 IDs). Corregidas las notas sobre respuestas, `searchTerms` y `captions.download`.
+- Hard Rules y ética: datos externos no confiables, nunca instrucciones; muestra autoseleccionada y moderada, no representativa y sin inferencias de identidad, demografía o veracidad.
+- Pruebas offline de presupuestos, truncamiento, errores por hilo/video, preferencias de idioma, solicitud de traducción y CLI; no se realizaron nuevas capturas de YouTube.
+
 ## 1.1 — 2026-10-22
 
 - `todo` descarga la ficha `watch` y consulta `youtubei/v1/player` una sola vez por video (antes, tres y dos veces): caché por cliente.
