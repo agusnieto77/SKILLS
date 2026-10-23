@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.3.1 — 2026-10-22
+
+- **PubMed**: un PMID ausente en una respuesta válida se informa como `not-found`, sin atribuirlo a una caída de red o cuota; se conservan las advertencias y los fallos reales de transporte.
+- **Markdown/Pandoc**: un `@handle` aislado ya no cambia una auditoría autor-fecha al modo de claves. Se requieren citas entre corchetes o una bibliografía `--bib` explícita.
+- **Autoría**: se preservan los metadatos estructurados al retirar `et al.`; las diferencias entre fuentes usan `source_a`/`source_b`. Los catálogos y repositorios mantienen el cotejo por primer autor, sin conflictos artificiales por editores o colaboradores ni afirmaciones de autoría completa validada.
+- **Evidencia**: cada extracción o auditoría calcula un único binding sobre su salida final; la API de extracción y la CLI producen el mismo contenido, sin `body_text`.
+- Regresiones offline para PMID inexistente, handles incidentales, listas de creadores de catálogos, etiquetas entre fuentes, truncaciones estructuradas y bindings únicos.
+
 ## 3.3 — 2026-10-22
 
 - **Autoría completa**: cotejo ordenado de apellidos, posiciones, cantidad y consorcios en validación externa y `zotero_client.diff_fields`; soporte de truncación declarada y recuperación PubMed `efetch`. Las listas incompletas se advierten, sin presentarlas como validación completa.

@@ -80,33 +80,44 @@ def _same_author(left: dict, right: dict) -> bool:
     return a == b or f" {a} " in f" {b} " or f" {b} " in f" {a} "
 
 
+def _visible_authors(values: list, details: list | None, *, corporate: bool = False) -> tuple[list, list, bool]:
+    structured = author_details(values, details, corporate=corporate)
+    visible, marker = split_truncation(values)
+    structured = structured[:len(visible)]
+    if marker and visible:
+        name_field = "literal" if "literal" in structured[-1] else "family"
+        structured[-1] = {**structured[-1], name_field: visible[-1]}
+    return visible, structured, marker
+
+
 def compare_authorship(left: list, right: list, *, left_details: list | None = None,
                        right_details: list | None = None, left_complete: bool = True,
                        right_complete: bool = True, truncated: bool = False,
-                       corporate: bool = False) -> dict:
-    left, marker = split_truncation(left)
-    right, right_marker = split_truncation(right)
+                       corporate: bool = False, left_label: str = "manuscript",
+                       right_label: str = "sources") -> dict:
+    left, a, marker = _visible_authors(left, left_details, corporate=corporate)
+    right, b, right_marker = _visible_authors(right, right_details)
     truncated = truncated or marker
     right_complete = right_complete and not right_marker and bool(right)
     left_complete = left_complete and bool(left)
-    a = author_details(left, left_details, corporate=corporate)
-    b = author_details(right, right_details)
     diffs, warnings = [], []
     for position, (person, source) in enumerate(zip(a, b, strict=False), 1):
         if not _same_author(person, source):
             diffs.append({"field": "first_author" if position == 1 else "authors", "position": position,
-                          "manuscript": author_label(person), "sources": author_label(source),
-                          "manuscript_kind": "literal" if "literal" in person else "person",
-                          "sources_kind": "literal" if "literal" in source else "person", "severity": "error"})
+                          left_label: author_label(person), right_label: author_label(source),
+                          f"{left_label}_kind": "literal" if "literal" in person else "person",
+                          f"{right_label}_kind": "literal" if "literal" in source else "person", "severity": "error"})
     if truncated:
         if not left or (right_complete and len(left) >= len(right)):
-            diffs.append({"field": "author_truncation", "manuscript": len(left), "sources": len(right),
+            diffs.append({"field": "author_truncation", left_label: len(left), right_label: len(right),
                           "severity": "error"})
         elif not right_complete:
-            warnings.append("La fuente no permite comprobar la truncación declarada de la autoría.")
+            warnings.append("La lista de la derecha no permite comprobar la truncación declarada de la autoría.")
+    # Una lista completa puede refutar autores extra visibles en la otra,
+    # aunque esa otra lista sea incompleta; no basta comparar mínimos comunes.
     elif len(left) != len(right) and ((left_complete and right_complete)
           or (left_complete and len(right) > len(left)) or (right_complete and len(left) > len(right))):
-        diffs.append({"field": "author_count", "manuscript": len(left), "sources": len(right), "severity": "error"})
+        diffs.append({"field": "author_count", left_label: len(left), right_label: len(right), "severity": "error"})
     if not left_complete or not right_complete:
         warnings.append("Autoría incompleta: solo se cotejaron las posiciones disponibles; la cantidad no está validada.")
     return {"agree": not diffs, "complete": left_complete and right_complete,

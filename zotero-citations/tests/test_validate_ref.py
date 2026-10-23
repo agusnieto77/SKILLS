@@ -46,6 +46,14 @@ class Verdicts(unittest.TestCase):
         b = rec("citoid", title="Breve historia", authors=["Donghi"], year="1972")
         self.assertTrue(vr.agree(a, b)["agree"])
 
+    def test_isbn_catalog_contributors_do_not_create_authorship_conflicts(self):
+        with mock.patch.object(vr, "openlibrary_isbn", return_value=rec("openlibrary", authors=["Messeri"])), \
+                mock.patch.object(vr, "citoid_isbn", return_value=rec("citoid (WorldCat)", authors=["Messeri", "Editor"])), \
+                mock.patch.object(vr, "googlebooks_isbn", return_value=None):
+            result = vr.validate_isbn("9780201896831", EXPECTED)
+        self.assertEqual(result["verdict"], "validated")
+        self.assertEqual(result["agreement"][0]["authorship"]["scope"], "first-author-only")
+
     def test_nothing_found(self):
         self.assertEqual(vr.verdict([None, None], EXPECTED, [])["verdict"], "not-found")
 
@@ -188,6 +196,12 @@ class WorkValidation(unittest.TestCase):
         self.assertEqual(self.run_work({"repo:unne": [vr._record("repo:unne", **hit)], "bne": [vr._record("bne", **hit)]},
                                        year="2021")["verdict"], "mismatch")
 
+    def test_catalog_and_repository_creator_lists_keep_first_author_semantics(self):
+        result = self.run_work({
+            "repo:unne": [rec("repo:unne", title=self.TITLE, authors=["Sujatt", "Colaborador"], year="2023")],
+            "bne": [rec("bne", title=self.TITLE, authors=["Sujatt", "Editor", "Otro"], year="2023")]})
+        self.assertEqual(result["verdict"], "validated")
+
     def test_failing_source_is_unavailable_not_fatal(self):
         def down(*_):
             raise ConnectionError("timeout")
@@ -275,6 +289,27 @@ class OrderedAuthorship(unittest.TestCase):
         self.assertTrue(vr.agree(a, b)["agree"])
         self.assertEqual(vr._family("Ludwig van Beethoven"), "van Beethoven")
 
+    def test_source_differences_use_source_labels_not_manuscript(self):
+        difference = vr.agree(rec("crossref"), rec("openalex", authors=["Messeri", "Inventado"]))["authorship"]["diffs"][0]
+        self.assertEqual((difference["source_a"], difference["source_b"]), ("Crockett", "Inventado"))
+        self.assertEqual((difference["source_a_kind"], difference["source_b_kind"]), ("person", "person"))
+        self.assertNotIn("manuscript", difference)
+
+    def test_structured_etal_preserves_literal_metadata_on_both_sides(self):
+        from authorship import compare_authorship
+
+        for left, right, left_details, right_details in [
+                (["Atlas", "et al."], ["Atlas", "Smith"],
+                 [{"literal": "Atlas"}, {"family": "et al."}], [{"literal": "Atlas"}, {"family": "Smith"}]),
+                (["Atlas"], ["Atlas", "et al."],
+                 [{"literal": "Atlas"}], [{"literal": "Atlas"}, {"family": "et al."}]),
+                (["Atlas et al."], ["Atlas", "Smith"],
+                 [{"literal": "Atlas et al."}], [{"literal": "Atlas"}, {"family": "Smith"}])]:
+            with self.subTest(left=left, right=right):
+                result = compare_authorship(left, right, left_details=left_details, right_details=right_details)
+                self.assertEqual(result["diffs"], [])
+
+
     def test_declared_etal_accepts_only_a_proper_ordered_prefix(self):
         source = rec("crossref", authors=["Messeri", "Crockett", "Quirós"])
         self.assertEqual(vr.compare_expected(source, {"authors": ["Messeri", "Crockett"], "etal": True}), [])
@@ -359,6 +394,21 @@ PUBMED_XML = """<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMI
 
 
 class PubMedAuthorship(unittest.TestCase):
+    def test_invented_pmid_is_not_found_without_unavailable_sources(self):
+        for summary in ({"result": {"999": {"error": "Invalid uid"}}}, {"result": {"uids": []}}):
+            with self.subTest(summary=summary), mock.patch.object(vr, "get_json", return_value=summary), \
+                    mock.patch.object(vr, "request", return_value=FakeResponse("<PubmedArticleSet/>")):
+                result = vr.validate_pmid("999", {})
+            self.assertEqual(result["verdict"], "not-found")
+            self.assertEqual(result["unavailable"], [])
+            self.assertEqual(result["records"], [])
+
+    def test_no_metadata_and_failed_efetch_remains_unavailable(self):
+        with mock.patch.object(vr, "get_json", side_effect=ConnectionError("summary timeout")), \
+                mock.patch.object(vr, "request", side_effect=ConnectionError("fetch timeout")):
+            result = vr.validate_pmid("999", {})
+        self.assertIn("fetch timeout", result["unavailable"][0])
+
     def test_pmid_command_path_uses_efetch_with_summary_metadata(self):
         with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
                 mock.patch.object(vr, "request", return_value=FakeResponse(PUBMED_XML)), \

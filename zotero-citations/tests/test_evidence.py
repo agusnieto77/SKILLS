@@ -60,6 +60,37 @@ class AuditEvidence(unittest.TestCase):
             extracted = cite_audit.extract(manuscript, bibliography_paths=[bib])
             self.assertEqual(extracted["evidence"]["binding"]["bibliographies"][0]["sha256"], evidence.file_sha256(bib))
 
+    def test_audit_binds_final_report_once(self):
+        import cite_audit
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.md"
+            path.write_text("Texto (Perez, 2001).", encoding="utf-8")
+            with mock.patch.object(cite_audit, "audit_evidence", wraps=evidence.audit_evidence) as bind:
+                report = cite_audit.audit(path, "es")
+            bind.assert_called_once()
+            self.assertIn("findings", bind.call_args.args[0])
+            content = {key: value for key, value in report.items() if key != "evidence"}
+            self.assertEqual(report["evidence"]["binding"]["audit_content_sha256"], evidence.json_sha256(content))
+
+    def test_extract_cli_uses_same_single_binding_as_python_api(self):
+        import cite_audit
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.md"
+            path.write_text("Texto (Perez, 2001).", encoding="utf-8")
+            extracted = cite_audit.extract(path)
+            with mock.patch.object(sys, "argv", ["cite_audit.py", "extract", str(path)]), \
+                    mock.patch.object(cite_audit, "emit") as emit, \
+                    mock.patch.object(cite_audit, "audit_evidence", wraps=evidence.audit_evidence) as bind:
+                cite_audit.main()
+            bind.assert_called_once()
+            output = emit.call_args.args[0]
+            self.assertNotIn("body_text", output)
+            self.assertEqual(output["evidence"]["binding"], extracted["evidence"]["binding"])
+            previous = cite_audit.extract(path, previous=extracted)
+            self.assertEqual(previous["evidence"]["status"], "current")
+
 
 class Provider:
     name = "offline"

@@ -56,6 +56,8 @@ python scripts/source_check.py check audit_nuevo.json match.json --previous chec
 
 `--bib` es explícito y repetible: no se ejecuta TeX ni se siguen rutas o comandos incluidos en metadatos. Una clave indefinida o repetida es un error; las entradas no usadas generan advertencias. Los diagnósticos de parseo incompleto impiden declarar cobertura completa. Las claves son sensibles a mayúsculas y no se convierten en claves Zotero ni en rutas.
 
+En Markdown/Pandoc/Quarto, el modo de claves requiere una cita entre corchetes (`[@clave]`) o `--bib`. Un `@handle` aislado conserva la auditoría autor-fecha y sus reglas de estilo; las citas narrativas `@clave` se reconocen cuando el modo de claves está activado.
+
 Autoría completa (listas ordenadas de apellidos o autores estructurados; `--author` también se puede repetir):
 
 ```bash
@@ -65,6 +67,8 @@ python scripts/validate_ref.py doi 10.1234/ejemplo --pmid 12345678 --author Pere
 ```
 
 `--etal` permite un prefijo declarado de la autoría, no sustituciones ni cambios de orden. PubMed recupera `AuthorList` con `efetch`; las fuentes parciales se advierten. Un único `--author` mantiene el control de primer autor.
+
+Entre catálogos y repositorios se comparan título, primer autor y año: sus listas pueden mezclar editores y colaboradores. Esto no valida la autoría completa. Los PMID inexistentes son `not-found` sin entradas en `unavailable`; los fallos reales de red o cuota sí se enumeran allí.
 
 Para reutilizar juicios de fidelidad, conservarlos en `results[].judgement` junto con el binding original. `--previous` los reutiliza solo en la misma ocurrencia con hashes y versiones idénticos y conocidos; de lo contrario marca `stale` y deja el juicio anterior como histórico. Sin texto completo, el resultado sigue siendo `no verificable`, no `sin respaldo`.
 

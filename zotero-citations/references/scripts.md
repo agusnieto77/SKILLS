@@ -77,7 +77,7 @@ En Windows, si la consola se abrió antes de un `setx`, los scripts leen igual l
 Usar `--bib referencias.bib` para cada bibliografía (opción repetible); una entrada `.bib` como manuscrito permite inventariar la biblioteca. Los archivos originales no se modifican. No se ejecuta LaTeX ni se abren bibliografías o archivos mencionados en metadatos: las rutas deben ser argumentos explícitos.
 
 - `.tex`: `\cite`, `\parencite`, `\textcite`, `\autocite`, `\citep`, `\citet`, con varias claves y notas opcionales `[prenota][posnota]`.
-- `.md`/`.markdown`/`.qmd`: citas Pandoc `[@clave]`, grupos como `[@uno; @dos]` y citas narrativas `@clave`. Los bloques de código, comentarios y direcciones de correo no son citas.
+- `.md`/`.markdown`/`.qmd`: citas Pandoc `[@clave]`, grupos como `[@uno; @dos]` y citas narrativas `@clave`. El modo de claves se activa con una cita entre corchetes o `--bib`; un `@handle` aislado no descarta las referencias autor-fecha ni sus reglas de estilo. Los bloques de código, comentarios y direcciones de correo no son citas.
 - El parser reconoce llaves anidadas, comillas y escapes; conserva `citekey`, texto original y `location` de la entrada y de cada uso. Las claves se resuelven exactamente, con distinción de mayúsculas; no se inventan citekeys Better BibTeX ni itemKeys.
 - Una clave indefinida o duplicada es un error; una entrada sin uso es una advertencia. Los problemas de parseo llevan ubicación y advertencia; revisar `bibliography_complete` (también en `summary`) y `bibliography_warnings` antes de afirmar cobertura completa. Las construcciones no resueltas deben verificarse, no omitirse silenciosamente.
 - Los índices `ref_indexes` siguen vinculando cada uso a sus referencias para `match` y `source_check`; `--no-lint` no convierte la entrada BibTeX en una bibliografía formateada.
@@ -86,6 +86,8 @@ Usar `--bib referencias.bib` para cada bibliografía (opción repetible); una en
 ### Evidencia y resultados anteriores
 
 `evidence.binding` registra el SHA-256 de los **bytes originales** del manuscrito y de cada `.bib`, además del hash canónico de la auditoría; `checked_at` usa UTC. Cada cita conserva `occurrence.id`, su ubicación exacta y un hash de su contexto/cita/localizador. Los campos Zotero todavía desconocidos en la ingesta son `null`, nunca estimados.
+
+El binding se calcula una sola vez sobre la salida final, sin el propio sobre `evidence` ni marcas de tiempo. `extract()` y la CLI `extract` excluyen `body_text` y comparten el mismo contenido; `audit()` incorpora también los hallazgos y el resumen antes de calcularlo.
 
 `--previous auditoria_anterior.json` compara los bindings: cualquier cambio de manuscrito, bibliografía o contenido de auditoría marca `evidence.status: stale` y enumera `changed_inputs`. No reutilizar una conclusión por coincidir solamente autor, año, citekey o itemKey.
 
@@ -189,19 +191,21 @@ Correcciones sobre Zotero en perfiles oficiales: rayas en rangos fuera de URL/DO
 
 | Veredicto | Significado | Acción |
 |---|---|---|
-| `validated` | 2+ fuentes independientes coinciden (título ≥ 0,9, autoría ordenada disponible, año; se tolera año online vs impreso) y el manuscrito coincide dentro del alcance declarado. | Se puede crear; revisar `authorship.manuscript_scope` y no afirmar autoría completa si solo se proporcionó el primer autor. |
+| `validated` | 2+ fuentes independientes coinciden (título ≥ 0,9, autoría ordenada disponible entre fuentes bibliográficas, primer autor para catálogos, año; se tolera año online vs impreso) y el manuscrito coincide dentro del alcance declarado. | Se puede crear; revisar `authorship.validated` y `authorship.manuscript_scope` antes de afirmar autoría completa. |
 | `single-source` | Respondió una sola fuente/grupo independiente, o no hay dos listas completas de autores para validar esa dimensión. | Buscar una segunda fuente completa (`work`, catálogo manual, ficha vía `work --url`) y mostrarla. |
 | `mismatch` | Las fuentes coinciden entre sí, el manuscrito difiere. | Mostrar `diffs_vs_manuscript`; corregir el manuscrito o preguntar. |
 | `conflict` | Las fuentes no coinciden entre sí. | No crear; revisión manual. |
-| `not-found` | DOI inexistente, ISBN con checksum inválido o sin resultados. | Marcar `[verificar]`. |
+| `not-found` | DOI o PMID inexistente, ISBN con checksum inválido o sin resultados. | Marcar `[verificar]`. |
 
-`unavailable` lista las fuentes que fallaron (red, cuota) para que el reporte no las cuente como validación.
+`unavailable` lista las fuentes que fallaron (red, cuota o respuesta inutilizable) para que el reporte no las cuente como validación. Un PMID ausente en una respuesta PubMed válida no genera una entrada en `unavailable`.
 
 ### Autoría completa
 
 `--authors` acepta un JSON ordenado con apellidos o autores estructurados (`{"family":"de la Fuente","given":"Ana"}` / `{"literal":"Consorcio Salud"}`). También se puede repetir `--author Apellido`; un único `--author` conserva la consulta histórica del primer autor. `--etal` declara una lista truncada: solo permite omitir el sufijo de una lista compatible, nunca cambiar autores ni posiciones.
 
 El cotejo compara apellidos, orden, número y tipo persona/consorcio. Los conflictos de coautores son `error`, aunque el primero y la cantidad coincidan; una truncación declarada compatible no es un error. Las listas parciales o de completitud desconocida llevan `authorship_warnings`/advertencias: no equivalen a autoría completa validada. `diff_fields` en `match` aplica el mismo criterio y conserva las diferencias por campo para revisión.
+
+Entre catálogos, repositorios o fichas Citoid, el cotejo conserva la semántica de primer autor: las listas pueden incluir editores o colaboradores y no se comparan como autorías ordenadas equivalentes. `agreement[].authorship.scope` es `first-author-only` en ese caso y `ordered` entre Crossref, DataCite, OpenAlex, PubMed y negociación DOI. Las diferencias de estas últimas usan `source_a`/`source_b` y sus campos `_kind`, en el orden de `agreement[].sources`, nunca `manuscript`. Un acuerdo limitado al primer autor no establece `authorship.validated: true`; el cotejo de una lista explícita del manuscrito contra la fuente elegida sigue siendo completo.
 
 `authorship` informa `validated`, `complete_sources`, `incomplete_sources` y `manuscript_scope` (`complete`, `truncated`, `first-author-only`, `not-provided`). Los registros conservan `authors`, `author_details`, `authors_complete` y `authorship_warnings`. PubMed `esummary` + `efetch` cuenta como una fuente; el PMID de `OpenAlex.ids.pmid` también permite recuperar autoría cuando está disponible.
 

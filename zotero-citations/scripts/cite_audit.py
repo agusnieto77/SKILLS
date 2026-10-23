@@ -78,13 +78,14 @@ def resolve_style(requested: str, detection: dict) -> tuple[str, str]:
 
 # --------------------------------------------------------------------------- pipeline
 
-def extract(path: Path, style: str = "auto", bibliography_paths=(), previous: dict | None = None) -> dict:
+def _extract(path: Path, style: str = "auto", bibliography_paths=()) -> dict:
     path = Path(path)
     bibliography_paths = tuple(Path(p) for p in bibliography_paths)
     inventory = path.suffix.lower() == ".bib"
     key_citations = find_key_citations(read_source(path), str(path)) \
         if path.suffix.lower() in (".tex", ".md", ".markdown", ".qmd") else []
-    key_mode = inventory or bool(bibliography_paths) or path.suffix.lower() == ".tex" or bool(key_citations)
+    bracketed_keys = any(c["raw"].startswith("[") and c["raw"].endswith("]") for c in key_citations)
+    key_mode = inventory or bool(bibliography_paths) or path.suffix.lower() == ".tex" or bracketed_keys
     doc = read_document(path)
     body, ref_paras, heading = split_sections(doc["paragraphs"])
     detection = detect_style(body, doc["notes"], [r["text"] for r in ref_paras])
@@ -113,13 +114,19 @@ def extract(path: Path, style: str = "auto", bibliography_paths=(), previous: di
             "bibliography_complete": bibliography["complete"], "bibliography_warnings": bibliography["warnings"]}
            if key_mode else {}),
     }
-    data["evidence"] = audit_evidence(data, path, data.get("bibliography_paths", bibliography_paths), previous)
+    return data
+
+
+def extract(path: Path, style: str = "auto", bibliography_paths=(), previous: dict | None = None) -> dict:
+    data = _extract(path, style, bibliography_paths)
+    data.pop("body_text")
+    data["evidence"] = audit_evidence(data, Path(path), data.get("bibliography_paths", ()), previous)
     return data
 
 
 def audit(path: Path, lang: str | None, style: str = "auto", lint: bool = True, bibliography_paths=(),
           previous: dict | None = None) -> dict:
-    data = extract(path, style, bibliography_paths)
+    data = _extract(path, style, bibliography_paths)
     profile = PROFILES[data["style"]]
     lang = lang or detect_lang(" ".join(data["body_text"])[:20000])
     refs, citations = data["references"], data["citations"]
@@ -194,10 +201,7 @@ def main() -> None:
             fail(f"Bibliography not found: {bibliography}")
     previous = load_json_file(args.previous) if args.previous else None
     if args.command == "extract":
-        data = extract(path, args.style, args.bib)
-        data.pop("body_text")
-        data["evidence"] = audit_evidence(data, path, data.get("bibliography_paths", args.bib), previous)
-        emit(data)
+        emit(extract(path, args.style, args.bib, previous))
     else:
         emit(audit(path, args.lang, args.style, lint=not args.no_lint, bibliography_paths=args.bib, previous=previous))
 

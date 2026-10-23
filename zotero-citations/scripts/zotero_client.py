@@ -282,13 +282,9 @@ def diff_fields(ref: dict, item: dict) -> list[dict]:
         authorship = compare_authorship(
             ref_authors, z_authors, left_details=ref.get("author_details"),
             right_details=item.get("creator_details"), corporate=bool(ref.get("corporate")),
-            truncated=bool(ref.get("etal") or ref.get("authors_truncated")),
+            truncated=bool(ref.get("etal") or ref.get("authors_truncated")), right_label="zotero",
         )
-        for difference in authorship["diffs"]:
-            difference["zotero"] = difference.pop("sources")
-            if "sources_kind" in difference:
-                difference["zotero_kind"] = difference.pop("sources_kind")
-            diffs.append(difference)
+        diffs.extend(authorship["diffs"])
         if ref_authors and not z_authors:
             diffs.append({"field": "author_count", "manuscript": len(ref_authors), "zotero": 0, "severity": "warning"})
     if ref.get("doi") and item["DOI"] and ref["doi"] != item["DOI"]:

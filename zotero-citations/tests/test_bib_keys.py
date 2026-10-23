@@ -173,6 +173,31 @@ class KeyOccurrences(unittest.TestCase):
             self.assertEqual(citation["quotes"][0]["locator"], "p. 7")
             self.assertEqual((manuscript.read_bytes(), bib.read_bytes()), before)
 
+    def test_incidental_handle_keeps_author_date_references_and_lint(self):
+        for suffix in (".md", ".markdown", ".qmd"):
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ("m" + suffix)
+                path.write_text("Según @cuenta, el estudio (Perez, 2001) cambia.\n\n"
+                                "Referencias\n\nPerez, Ana. (2001). *Libro*. Editorial.\n\n"
+                                "Entrada sin formato reconocible.\n", encoding="utf-8")
+                report = cite_audit.audit(path, "es", style="apa")
+                self.assertNotEqual(report.get("citation_mode"), "keys")
+                self.assertEqual(len(report["references"]), 2)
+                self.assertEqual(report["citations"][0]["ref_indexes"], [0])
+                rules = {finding["rule"] for finding in report["findings"]}
+                self.assertNotIn("C-UNDEFINED-KEY", rules)
+                self.assertIn("R-INITIALS", rules)
+                self.assertIn("D-MIXED-STYLE", rules)
+
+    def test_explicit_bibliography_enables_narrative_key_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, bib = Path(directory) / "m.md", Path(directory) / "refs.bib"
+            path.write_text("Según @Alpha, el estudio cambia.", encoding="utf-8")
+            bib.write_text("@book{Alpha,author={Perez, Ana},title={Libro},year=2001}", encoding="utf-8")
+            report = cite_audit.audit(path, None, bibliography_paths=[bib])
+            self.assertEqual(report["citation_mode"], "keys")
+            self.assertEqual(report["citations"][0]["ref_indexes"], [0])
+
     def test_no_bibliography_paths_are_inferred_from_untrusted_input(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "m.qmd"
