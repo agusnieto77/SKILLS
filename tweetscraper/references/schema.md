@@ -31,6 +31,33 @@ Ausente = `null`. Listas: arrays en JSON/JSONL; en CSV, valores unidos con ` | `
 | `sensible`, `editado` | lógico | |
 | `lugar`, `pais` | texto | Geoetiqueta, si la hay. |
 
+## Hilos (`thread`)
+
+Las 31 columnas de tweets permanecen intactas; solo este comando agrega `rol`:
+`antecedente` (cadena de padres del focal), `focal` (ID solicitado),
+`continuacion` (autorrespuestas conectadas del autor focal) o `respuesta`
+(otras respuestas recolectadas). Filas deduplicadas por `tweet_id` y ordenadas
+por `fecha`, con ID como desempate. En stdout: `requested_id`, `root_id`,
+`truncated`, `details` y `warnings`. La raíz conocida no implica cuerpo completo.
+
+## Articles (`article`, entidad separada)
+
+| Campo | Contenido |
+|---|---|
+| `article_id`, `tweet_id` | ID del Article y tweet asociado si se conoce. |
+| `user`, `url`, `fecha` | Autor, URL canónica del Article y fecha UTC si está disponible. |
+| `titulo`, `portada` | Título y URL de portada. |
+| `texto` | Cuerpo completo extraído de bloques o `plain_text`; `null` si solo hay preview. |
+| `preview`, `estado_cuerpo` | Adelanto separado y `completo` / `preview`. |
+| `bloques`, `entidades` | Bloques Draft.js y `entityMap` normalizado a objeto (acepta lista de entidades o pares key/value). |
+| `enlaces` | URLs de entidades LINK. |
+| `media` | Lista de `{id, url, tipo}` del cuerpo; no es la columna `media` de tweets. |
+
+El exportador Markdown renderiza los bloques; no transforma `preview` en cuerpo.
+La falta de contenido accesible genera aviso, no una ampliación de permisos.
+Los 31 campos de tweets públicos también conservan su orden: información no
+publicada por el proveedor queda en `null`, sin inventar ceros ni métricas.
+
 ## Usuarixs (18)
 
 `user` (con `@`), `nombre`, `user_id`, `descripcion`, `seguidores`,

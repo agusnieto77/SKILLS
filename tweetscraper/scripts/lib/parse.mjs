@@ -178,6 +178,84 @@ export function parseTimelineTweets(doc) {
   return { tweets, cursor };
 }
 
+/** Thread roles are independent of timeline ordering and never include quoted tweets. */
+export function reconstructThread(tweets, requestedId) {
+  const byId = new Map(tweets.filter((t) => t.tweet_id).map((t) => [t.tweet_id, t]));
+  const focal = byId.get(requestedId);
+  if (!focal) throw new Error('No se pudo recuperar el tweet focal.');
+  const ancestors = new Set();
+  let parent = focal.respuesta_a_id;
+  while (parent && byId.has(parent) && parent !== requestedId && !ancestors.has(parent)) {
+    ancestors.add(parent);
+    parent = byId.get(parent).respuesta_a_id;
+  }
+  const continuation = new Set([requestedId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const t of byId.values()) {
+      const sameAuthor = focal.user_id && t.user_id ? focal.user_id === t.user_id : focal.user && focal.user === t.user;
+      if (sameAuthor && continuation.has(t.respuesta_a_id) && !continuation.has(t.tweet_id)) {
+        continuation.add(t.tweet_id);
+        changed = true;
+      }
+    }
+  }
+  const rows = [...byId.values()].map((t) => ({ ...t, rol: t.tweet_id === requestedId ? 'focal' :
+    ancestors.has(t.tweet_id) ? 'antecedente' : continuation.has(t.tweet_id) ? 'continuacion' : 'respuesta' }));
+  rows.sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? '') ||
+    (BigInt(a.tweet_id) < BigInt(b.tweet_id) ? -1 : BigInt(a.tweet_id) > BigInt(b.tweet_id) ? 1 : 0));
+  const rootId = focal.conversation_id ?? (parent || [...ancestors].at(-1)) ?? requestedId;
+  return { rows, rootId, missingParent: parent, continuation };
+}
+
+/** Articles have their own schema: a preview is never passed off as a full body. */
+export function parseArticles(doc) {
+  const out = new Map();
+  function walk(value, author = null, tweetId = null) {
+    if (!value || typeof value !== 'object') return;
+    if (value.legacy?.full_text != null) {
+      const user = value.core?.user_results?.result;
+      author = user?.core?.screen_name ?? user?.legacy?.screen_name ?? author;
+      tweetId = value.rest_id ?? tweetId;
+    }
+    const state = value.content_state;
+    const isArticle = typeof value.title === 'string' || state?.blocks || typeof value.preview_text === 'string';
+    if (isArticle && value.rest_id) {
+      const blocks = Array.isArray(state?.blocks) ? state.blocks : [];
+      const entityMap = Array.isArray(state?.entityMap)
+        ? Object.fromEntries(state.entityMap.map((e, i) => [String(e?.key ?? i), e?.value ?? e]))
+        : state?.entityMap ?? {};
+      const body = blocks.length ? blocks.map((b) => b.text ?? '').join('\n\n') : value.plain_text || null;
+      const media = (value.media_entities ?? []).map((m) => {
+        const info = m.media_info ?? {};
+        const variants = info.variants ?? info.video_info?.variants ?? [];
+        const video = variants.filter((v) => v.content_type === 'video/mp4')
+          .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0];
+        return { id: String(m.media_id ?? m.id ?? ''), url: video?.url ?? info.original_img_url ?? info.url ?? null,
+          tipo: video ? 'video' : 'photo' };
+      }).filter((m) => m.url);
+      const row = {
+        article_id: String(value.rest_id), tweet_id: tweetId, user: author ? '@' + author : null,
+        url: `https://x.com/i/article/${value.rest_id}`, fecha: parseMsec(value.created_at_secs == null ? null : value.created_at_secs * 1000),
+        titulo: value.title ?? null, portada: value.cover_media?.media_info?.original_img_url ?? null,
+        texto: body, preview: value.preview_text ?? null, estado_cuerpo: body ? 'completo' : 'preview',
+        bloques: blocks, entidades: entityMap,
+        enlaces: Object.values(entityMap).filter((e) => String(e?.type).toUpperCase() === 'LINK')
+          .map((e) => e.data?.url).filter((u) => typeof u === 'string'),
+        media,
+      };
+      if (!out.has(row.article_id) || row.estado_cuerpo === 'completo') out.set(row.article_id, row);
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== 'note_tweet' && key !== 'quoted_status_result' && key !== 'retweeted_status_result') walk(child, author, tweetId);
+    }
+  }
+  walk(doc);
+  return [...out.values()];
+}
+
 /**
  * One user record from a `user_results.result` object, or null.
  * Since 2026-10 X dropped the user `legacy` block: counts live in

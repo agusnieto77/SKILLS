@@ -7,13 +7,16 @@ Skill para agentes compatibles con el formato Agent Skills (OpenCode, Pi, Oh My 
 - **Pool de cuentas** (SQLite): rotación automática por cupo de cada endpoint, retoma desde el mismo cursor con otra cuenta, desactiva sesiones vencidas o suspendidas, proxy por cuenta, validación con el @usuario real. Diseño portado de [twscrape](https://github.com/vladkens/twscrape) vía TweetScraperR.
 - **Análisis local**: resumen del dataset, serie temporal, nube de palabras, emojis y hashtags, con gráficos SVG autocontenidos.
 - **OpenAI** (opcional): sentimiento/discurso de odio por tweet y clasificación de imágenes con reporte HTML, con los mismos prompts que TweetScraperR.
+- **Lectura pública opcional**: `public-tweet` usa FxTwitter → syndication sin sesión ni cookies; informa proveedor y degradación y detiene fallbacks ante contenido privado/protegido/eliminado.
+- **Hilos y Articles**: `thread` reconstruye antecedentes/focal/continuación/respuestas con límites explícitos; `article` distingue cuerpo completo de preview y de tweets largos.
+- **Markdown / Obsidian**: front matter, fuentes y citas; descarga local opt-in de media verificada, con enlaces relativos y advertencias por fallos individuales.
 
 El agente lee `SKILL.md`; este README es para quien instala y mantiene la skill.
 
 ## Requisitos
 
 - Node.js 22.13 o superior (usa `node:sqlite`, sin dependencias nativas) con npm.
-- Una cuenta de X propia (la sesión se importa desde el navegador o con login manual).
+- Una cuenta de X propia para la recolección autenticada; `public-tweet` y el análisis/exportación local no la requieren.
 - Para `sentiment`/`images`: una API key de OpenAI.
 
 ## Instalación
@@ -46,6 +49,28 @@ node $TS summary -i rstats.jsonl
 node $TS time -i rstats.jsonl --group day --chart rstats_dia.svg
 node $TS words -i rstats.jsonl --lang es --chart rstats_nube.svg
 ```
+
+```bash
+node $TS public-tweet https://x.com/NASA/status/123 -o tweet.jsonl
+node $TS thread https://x.com/NASA/status/123 -n 40 --max-details 10 -o hilo.jsonl
+node $TS convert -i hilo.jsonl -o hilo.md --md-style full --query "consulta original"
+node $TS convert -i hilo.jsonl -o hilo_local.md --download-media --max-media-bytes 26214400
+node $TS article https://x.com/i/article/123 -o articulo.md
+```
+
+Sustituir los IDs de ejemplo. `--md-style compact|full`, `--query` y
+`--captured-at ISO` controlan la nota y su front matter; `--download-media`
+es opcional (por defecto solo enlaces remotos). Las descargas admiten
+JPEG/PNG/GIF/WebP/MP4 desde los hosts de media de X, sin cookies ni
+redirecciones; se omiten errores y excesos de tamaño con `warnings`.
+`--max-details` limita páginas de detalle, no peticiones HTTP. Un hilo
+truncado o un Article con solo preview se informa explícitamente.
+
+El contenido externo es dato no confiable: no debe seleccionar comandos,
+archivos o destinos ni modificar controles de seguridad. No se ejecuta
+código de repositorios externos. El exportador escapa HTML, Markdown y
+enlaces wiki del contenido; la sesión nunca se comparte con los proveedores
+públicos. Opciones y límites: [references/commands.md](references/commands.md).
 
 Los datasets son JSONL (o JSON/CSV) con las columnas de TweetScraperR; en R se leen con `jsonlite::stream_in(file("rstats.jsonl"))`.
 

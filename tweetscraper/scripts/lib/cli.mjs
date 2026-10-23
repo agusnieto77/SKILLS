@@ -9,7 +9,7 @@ import * as engine from './engine.mjs';
 import * as collect from './collect.mjs';
 import * as an from './analyze.mjs';
 import { lineChart, barChart, wordCloud } from './charts.mjs';
-import { readRows, writeRows, appendJsonl, outPath, formatOf } from './io.mjs';
+import { readRows, writeRows, writeMarkdown, appendJsonl, outPath, formatOf } from './io.mjs';
 import { TWEET_FIELDS, USER_FIELDS, ABOUT_FIELDS } from './parse.mjs';
 import { apiKey, analyzeTweet, analyzeImage, mapLimit, photosOf } from './openai.mjs';
 import { imageReport } from './report.mjs';
@@ -43,6 +43,13 @@ const OPTIONS = {
   'max-tweets': { type: 'string' },
   'urls-file': { type: 'string' },
   'users-file': { type: 'string' },
+  'max-details': { type: 'string' },
+  // Markdown / Obsidian (media downloads are opt-in)
+  'md-style': { type: 'string' },
+  query: { type: 'string' },
+  'captured-at': { type: 'string' },
+  'download-media': { type: 'boolean' },
+  'max-media-bytes': { type: 'string' },
   // analysis
   top: { type: 'string' },
   group: { type: 'string' },
@@ -148,11 +155,20 @@ function makeCtx(v, signal) {
   return { ctx, warnings, done: () => prog.clear() };
 }
 
-const FIELDS_BY_KIND = { tweets: TWEET_FIELDS, users: USER_FIELDS, about: ABOUT_FIELDS };
+const FIELDS_BY_KIND = { tweets: TWEET_FIELDS, thread: [...TWEET_FIELDS, 'rol'], users: USER_FIELDS, about: ABOUT_FIELDS };
 
-function saveDataset(v, res, kind) {
+async function saveDataset(v, res, kind, signal) {
   const file = v.out === '-' ? '-' : outPath(v.out, res.prefix);
-  return writeRows(file, res.rows, { format: v.format, fields: FIELDS_BY_KIND[kind] });
+  const format = formatOf(file, v.format);
+  if (format === 'markdown' || format === 'md') {
+    return writeMarkdown(file, res.rows, { style: v['md-style'] || 'full', query: v.query ?? res.meta?.query ?? null,
+      ...(v['captured-at'] ? { capturedAt: v['captured-at'] } : {}), downloadMedia: !!v['download-media'],
+      maxMediaBytes: num(v['max-media-bytes'], 25 * 1024 * 1024, 'max-media-bytes'), signal });
+  }
+  if (v['download-media'] || v['md-style'] || v['max-media-bytes'] || v['captured-at']) {
+    throw new UsageError('Las opciones Markdown requieren --format markdown o un archivo .md.');
+  }
+  return { out: writeRows(file, res.rows, { format: v.format, fields: FIELDS_BY_KIND[kind] }), warnings: [] };
 }
 
 // ---- commands --------------------------------------------------------------
@@ -169,6 +185,10 @@ const COLLECTORS = {
   },
   replies: { kind: 'tweets', args: 1, run: (c, a, v) => collect.replies(c, a[0], num(v.n, 40, 'n')) },
   tweets: { kind: 'tweets', list: 'urls-file', run: (c, a) => collect.tweetsData(c, a) },
+  'public-tweet': { kind: 'tweets', args: 1, run: (c, a) => collect.publicTweet(c, a[0]) },
+  thread: { kind: 'thread', args: 1, run: (c, a, v) => collect.thread(c, a[0], num(v.n, 40, 'n'),
+    { maxDetails: num(v['max-details'], 10, 'max-details') }) },
+  article: { kind: 'article', args: 1, run: (c, a) => collect.article(c, a[0]) },
   'list-tweets': { kind: 'tweets', args: 1, run: (c, a, v) => collect.listTweets(c, a[0], num(v.n, 40, 'n')) },
   users: { kind: 'users', list: 'users-file', run: (c, a) => collect.usersData(c, a) },
   about: { kind: 'about', list: 'users-file', run: (c, a) => collect.usersAbout(c, a) },
@@ -191,14 +211,14 @@ async function runCollector(name, spec, pos, v, signal) {
   } finally {
     done();
   }
-  const out = saveDataset(v, res, spec.kind);
+  const saved = await saveDataset(v, res, spec.kind, signal);
   return {
     ok: true,
     command: name,
-    out,
+    ...saved,
     ...(signal.aborted ? { interrupted: true } : {}),
     ...(res.meta || {}),
-    warnings,
+    warnings: [...warnings, ...saved.warnings],
     summary: an.summarize(res.rows, 3),
   };
 }
@@ -262,10 +282,11 @@ function tableResult(command, rows, v, extra = {}) {
 const ANALYSIS = {
   summary: (pos, v) => ({ ok: true, command: 'summary', in: path.resolve(v.in ?? ''), ...an.summarize(readInput(v), num(v.top, 5, 'top')) }),
 
-  convert: (pos, v) => {
-    if (!v.out) throw new UsageError('convert needs --out (extension sets the format: .jsonl, .json, .csv).');
+  convert: async (pos, v) => {
+    if (!v.out) throw new UsageError('convert needs --out (extension sets the format: .jsonl, .json, .csv, .md).');
     const rows = readInput(v);
-    return { ok: true, command: 'convert', rows: rows.length, out: writeRows(v.out, rows, { format: v.format }) };
+    return { ok: true, command: 'convert', rows: rows.length,
+      ...await saveDataset(v, { rows, prefix: 'converted' }, null) };
   },
 
   hashtags: (pos, v) => {
@@ -606,11 +627,12 @@ Session:   session import [--account A] (--from-env [PREFIX] | --cookies-file F 
 Accounts:  accounts list|check [A...]|add <csv>|remove A...|reactivate A...|reset-locks|proxy A... --proxy P|setup
 Tweets:    user-tweets <user> | media <user> | timelines <user...> | search <query> [--product Latest|Top|Media]
            [--since D --until D] | live <query> [--interval 300 --duration 3600] | replies <url>
-           tweets <url...> | list-tweets <list>
+           tweets <url...> | public-tweet <url> (no login) | thread <url> [--max-details 10] | article <url> | list-tweets <list>
 Users:     users <user...> | about <user...> | users-search <query> | followers <user> | following <user>
            retweeters <url> | list-members <list>
 Analysis:  summary | convert | hashtags | time [--group hour|day|week|month|year] [--chart f.svg]
            words [--lang es --chart f.svg] | emojis [--chart f.svg]  (all with --in <dataset>)
+           convert -i F -o note.md [--md-style compact|full --query Q --captured-at ISO --download-media --max-media-bytes N]
 OpenAI:    sentiment (--in F | --text T...) | images (--in F | --img X...) [--report r.html] | img-report --in F --out r.html
 Common:    -n N  -o/--out FILE(.jsonl|.json|.csv|-)  --wait-timeout S  --proxy P  --debug-dir D  --headed
 
@@ -635,7 +657,7 @@ export async function main(argv) {
     const signal = controller.signal;
     if (COLLECTORS[cmd]) result = await runCollector(cmd, COLLECTORS[cmd], pos, v, signal);
     else if (cmd === 'live') result = await runLive(pos, v, signal);
-    else if (ANALYSIS[cmd]) result = ANALYSIS[cmd](pos, v);
+    else if (ANALYSIS[cmd]) result = await ANALYSIS[cmd](pos, v);
     else if (cmd === 'sentiment') result = await runSentiment(pos, v, signal);
     else if (cmd === 'images') result = await runImages(pos, v, signal);
     else if (cmd === 'install') result = runInstall();

@@ -1,6 +1,8 @@
 // Reading and writing datasets: JSON Lines (default), JSON array or CSV.
 import fs from 'node:fs';
 import path from 'node:path';
+import { toMarkdown } from './markdown.mjs';
+export { toMarkdown, writeMarkdown } from './markdown.mjs';
 
 // Separator of list columns (hashtags, media...) in CSV cells.
 export const LIST_SEP = ' | ';
@@ -18,6 +20,7 @@ export function formatOf(file, explicit) {
   const ext = path.extname(file || '').toLowerCase();
   if (ext === '.csv') return 'csv';
   if (ext === '.json') return 'json';
+  if (ext === '.md' || ext === '.markdown') return 'markdown';
   return 'jsonl';
 }
 
@@ -44,6 +47,7 @@ export function toCsv(rows, fields) {
 
 export function serialize(rows, format, fields) {
   if (format === 'csv') return toCsv(rows, fields);
+  if (format === 'markdown' || format === 'md') return toMarkdown(rows);
   if (format === 'json') return JSON.stringify(rows, null, 2) + '\n';
   return rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : '');
 }

@@ -7,7 +7,8 @@
 // continues where it stopped instead of starting over.
 import * as pool from './pool.mjs';
 import { harvest } from './engine.mjs';
-import { parseTimelineTweets, parseUsers, userRow, aboutRow } from './parse.mjs';
+import { parseTimelineTweets, parseUsers, userRow, aboutRow, reconstructThread, parseArticles, findInstructions } from './parse.mjs';
+import { fetchPublicTweet } from './public.mjs';
 
 const DISABLE_MSGS = {
   expired: 'session expired or revoked',
@@ -282,6 +283,98 @@ export async function tweetsData(ctx, urls) {
     else ctx.warn('Could not retrieve the tweet: ' + urls[k]);
   });
   return { rows, prefix: 'api_tweets_data' };
+}
+
+/** Explicit opt-in: no session or account lookup is used for public providers. */
+export async function publicTweet(ctx, url) {
+  const id = statusId(tweetUrl(url));
+  const { row, provider } = await fetchPublicTweet(id, ctx);
+  return { rows: [row], prefix: 'public_tweet_' + id, meta: { provider, degraded: true } };
+}
+
+/** Bounded TweetDetail traversal; maxDetails limits browser detail collections, not HTTP requests. */
+export async function thread(ctx, url, n = 40, { maxDetails = 10 } = {}) {
+  if (!Number.isInteger(n) || n < 1 || !Number.isInteger(maxDetails) || maxDetails < 1) {
+    throw new CollectError('n y max-details deben ser enteros positivos (positive integers).');
+  }
+  const requestedId = statusId(tweetUrl(url));
+  const seen = new Set();
+  const byId = new Map();
+  const pending = [requestedId];
+  let truncated = false;
+  while (pending.length && seen.size < maxDetails && !ctx.signal?.aborted) {
+    const id = pending.shift();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    let docs;
+    try {
+      [docs] = await harvestPool(ctx, [`https://x.com/i/status/${id}`], ['TweetDetail'], { maxScrolls: scrollsFor(n), n });
+    } catch (e) {
+      if (!byId.size) throw e;
+      truncated = true;
+      ctx.warn('Hilo parcial: ' + e.message);
+      break;
+    }
+    for (const row of tweetsOf(docs)) byId.set(row.tweet_id, row);
+    if (docs.some((d) => parseTimelineTweets(d).cursor || hasThreadCursor(findInstructions(d)))) {
+      truncated = true;
+    }
+    if (!byId.has(requestedId)) throw new CollectError('No se pudo recuperar el tweet focal.');
+    const classified = reconstructThread([...byId.values()], requestedId);
+    if (classified.missingParent && !seen.has(classified.missingParent)) pending.unshift(classified.missingParent);
+    for (const continuation of classified.continuation) {
+      if (!seen.has(continuation) && !pending.includes(continuation)) pending.push(continuation);
+    }
+    if (byId.size >= n && pending.length) { truncated = true; break; }
+  }
+  const classified = reconstructThread([...byId.values()], requestedId);
+  if (pending.length || ctx.signal?.aborted || classified.missingParent || byId.size > n) truncated = true;
+  // Keep focal and ancestors before other conversation rows when the output cap is reached.
+  const priority = { focal: 0, antecedente: 1, continuacion: 2, respuesta: 3 };
+  const selected = new Set([...classified.rows].sort((a, b) => priority[a.rol] - priority[b.rol]).slice(0, n).map((r) => r.tweet_id));
+  const rows = classified.rows.filter((r) => selected.has(r.tweet_id));
+  if (truncated) ctx.warn('Hilo truncado: límite, cursor pendiente, interrupción o antecedente inaccesible; no se garantiza completitud.');
+  return { rows, prefix: 'api_thread_' + requestedId,
+    meta: { requested_id: requestedId, root_id: classified.rootId, truncated, details: seen.size } };
+}
+
+function hasThreadCursor(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (value.cursorType === 'Bottom' || value.cursorType === 'ShowMore') return true;
+  return Object.values(value).some(hasThreadCursor);
+}
+
+const ARTICLE_OPS = ['ArticleEntityResultByRestId', 'TweetResultByRestId', 'TweetDetail'];
+
+/** Let x.com's authenticated application load the Article; never fabricate GraphQL requests. */
+export async function article(ctx, input) {
+  let url;
+  let articleId = null;
+  const match = /^https?:\/\/(?:www\.)?(?:x|twitter)\.com\/(?:i\/)?article\/(\d+)(?:[/?#]|$)/i.exec(String(input));
+  if (match) { articleId = match[1]; url = 'https://x.com/i/article/' + articleId; }
+  else url = tweetUrl(input);
+  const [docs] = await harvestPool(ctx, [url], ARTICLE_OPS, { maxScrolls: 2 });
+  let rows = uniqueBy(docs.flatMap(parseArticles), 'article_id');
+  if (!articleId) {
+    const focal = tweetsOf(docs).find((t) => t.tweet_id === statusId(url));
+    const linked = focal?.urls_externas?.map((u) => /https?:\/\/(?:x|twitter)\.com\/i\/article\/(\d+)/i.exec(u)?.[1]).find(Boolean);
+    articleId = rows.find((r) => r.tweet_id === statusId(url))?.article_id ?? linked;
+    if (articleId && !rows.some((r) => r.article_id === articleId && r.estado_cuerpo === 'completo')) {
+      try {
+        const [bodyDocs] = await harvestPool(ctx, ['https://x.com/i/article/' + articleId], ARTICLE_OPS, { maxScrolls: 2 });
+        const fetched = bodyDocs.flatMap(parseArticles).filter((r) => r.article_id === articleId);
+        const full = fetched.find((r) => r.estado_cuerpo === 'completo') ?? fetched[0];
+        if (full) {
+          const old = rows.find((r) => r.article_id === articleId);
+          rows = [{ ...full, user: full.user ?? old?.user ?? focal?.user ?? null, tweet_id: full.tweet_id ?? statusId(url) }];
+        }
+      } catch (e) { ctx.warn('No se pudo ampliar el Article: ' + e.message); }
+    }
+  }
+  if (articleId) rows = rows.filter((r) => r.article_id === articleId);
+  if (!rows.length) throw new CollectError('No se encontró un Article accesible; note_tweet no es un Article.');
+  for (const row of rows) if (row.estado_cuerpo !== 'completo') ctx.warn(`Article ${row.article_id}: solo preview; el cuerpo no está disponible.`);
+  return { rows, prefix: 'api_article_' + (articleId ?? statusId(url)), meta: { partial: rows.some((r) => r.estado_cuerpo !== 'completo') } };
 }
 
 export async function listTweets(ctx, list, n = 40) {

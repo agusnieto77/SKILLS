@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 — 2026-10-22
+
+- Lectura pública explícita `public-tweet`: FxTwitter y fallback syndication con token calculado, sin cookies ni sesión y con freno ante contenido inaccesible.
+- `thread`: reconstrucción acotada de antecedentes y continuación del autor, roles separados, raíz, deduplicación, orden cronológico y advertencias por truncamiento.
+- Exportación Markdown/Obsidian (`convert` o recolección a `.md`): front matter, fuentes, citas, formatos compacto/completo y media local opt-in con límites de tipo, host y tamaño.
+- `article`: entidad y esquema propios con título, portada, bloques Draft.js, enlaces y media; `entityMap` como objeto o lista y separación explícita entre cuerpo y preview.
+- Frontera de confianza explícita: textos, bios, Articles, URLs y errores externos no seleccionan comandos, archivos ni destinos; exportaciones escapadas.
+- Pruebas offline de proveedores, contenido inaccesible, hilos parciales, Articles, exportación, descargas y CLI; recetas trasladadas a la referencia para reducir SKILL.md.
+
 ## 1.0.0 — 2026-10-21
 
 Primera versión: port a Node.js de TweetScraperR 0.8.1.9000.
