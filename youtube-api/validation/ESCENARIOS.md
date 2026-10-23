@@ -20,7 +20,7 @@ Criterios reproducibles para revisar el CLI y sus documentos. No afirma ejecuci�
 | Máximo alcanzado dentro de página de respuestas | no solicita otra página ni hilo; conserva filas obtenidas e identifica hilo incompleto |
 | Error HTTP/red de un hilo, sin bloqueo | conserva padres/respuestas previas y el error asociado al ID; intenta otros hilos dentro del presupuesto |
 | Tope de páginas y cambio de orden | orden, padres y respuestas comparten tope explícito de 60; `motivo_fin=max_paginas` |
-| Tope de peticiones ante 429 | cada intento cuenta; no reintenta fuera del presupuesto; `motivo_fin=max_peticiones`, bloqueo informado y sin más peticiones |
+| Tope de peticiones ante 429 | cada intento cuenta; no reintenta fuera del presupuesto; informa bloqueo con `error_pagina` o `error_hilo`, sin más peticiones |
 | Token repetido | detiene el ciclo con motivo reportado, no como fin natural |
 | Error en página posterior | conserva filas y `errores`; `parcial=true` |
 | Fin natural con menos filas que total declarado | `parcial=true`; no certifica exhaustividad |
@@ -31,10 +31,14 @@ Criterios reproducibles para revisar el CLI y sus documentos. No afirma ejecuci�
 | Lote por URLs/archivo con entrada inválida | resultado/error independiente y posición; los válidos posteriores se procesan |
 | Error de red por video | no aborta las restantes entradas del lote |
 | Más de 50 entradas | rechazo antes de toda petición; no truncamiento silencioso |
-| HTTP 429 agotado o `LOGIN_REQUIRED` en watch/player/next | detiene lote, operaciones de `todo` e hilos pendientes; registra `no_procesado` con motivo en las entradas restantes |
+| HTTP 429 agotado o `LOGIN_REQUIRED` con evidencia explícita de bot en watch/player/next | detiene lote, operaciones de `todo` e hilos pendientes; registra `no_procesado` con motivo en las entradas restantes |
 | Interrupción o excepción inesperada durante el lote | conserva el recibo de las entradas terminadas y las pendientes; interrumpir el reemplazo no trunca el recibo anterior |
 | Error de red paginando comentarios o respuestas | operación única devuelve 3, conserva filas y `error_red=true`; `todo` y lotes devuelven 1 |
 | `OSError` de salida JSON/CSV en `todo` | conserva resultados de otras operaciones; un segundo fallo en el JSON de error queda como `error_escritura` |
+| `LOGIN_REQUIRED` por edad, privado o motivo desconocido | informa error de ese video; procesa entradas posteriores sin marcar bloqueo del cliente |
+| Fallo transitorio del recibo inicial/intermedio | emite advertencia, procesa todas las entradas y reintenta el guardado; limpia el temporal cuando es posible |
+| Fallo del recibo final | procesa las entradas, pero devuelve 1 si no puede guardar el recibo final |
+| HTTP 200 no JSON en página, hilo o player | salida 1, no 3; comentarios conserva filas y `error_red=false` |
 
 ## Pruebas de red (requieren internet y una IP no bloqueada)
 

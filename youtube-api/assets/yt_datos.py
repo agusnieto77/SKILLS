@@ -59,6 +59,15 @@ class LimiteComentarios(YouTubeError):
     """Presupuesto agotado sin solicitar otra pagina."""
 
 
+def _mensaje_bloqueo(motivo: str) -> str:
+    return f"Recoleccion detenida por bloqueo: {motivo}. No se enviaran mas peticiones."
+
+
+def _es_error_red(error: Exception) -> bool:
+    """JSONDecodeError de requests hereda de RequestException, pero no es transporte."""
+    return isinstance(error, requests.RequestException) and not isinstance(error, requests.exceptions.JSONDecodeError)
+
+
 @dataclass
 class PresupuestoComentarios:
     max_paginas: int = MAX_PAGINAS
@@ -473,11 +482,21 @@ class ClienteYouTube:
     # -- infraestructura ---------------------------------------------------- #
     def _bloquear(self, motivo: str):
         self.bloqueo = motivo
-        raise YouTubeError(f"Recoleccion detenida por bloqueo: {motivo}. No se enviaran mas peticiones.")
+        raise YouTubeError(_mensaje_bloqueo(motivo))
 
     def _comprobar_bloqueo(self, datos: dict):
-        if (datos.get("playabilityStatus") or {}).get("status") == "LOGIN_REQUIRED":
+        estado = datos.get("playabilityStatus") or {}
+        if estado.get("status") != "LOGIN_REQUIRED":
+            return
+        pantalla = (estado.get("errorScreen") or {}).get("playerErrorMessageRenderer") or {}
+        mensajes = [estado.get("reason") or ""]
+        for campo in ("reason", "subreason"):
+            nodo = pantalla.get(campo) or {}
+            mensajes.append(nodo.get("simpleText") or _texto_runs(nodo.get("runs")))
+        texto = " ".join(mensajes).casefold()
+        if any(marca in texto for marca in ("not a bot", "no eres un bot", "no eres un robot")):
             self._bloquear("login_required")
+        raise YouTubeError(f"El video requiere sesion: {estado.get('reason') or 'LOGIN_REQUIRED'}")
 
     @staticmethod
     def _espera_429(respuesta: requests.Response) -> float:
@@ -514,8 +533,7 @@ class ClienteYouTube:
                 try:
                     presupuesto.consumir_intento_pagina()
                 except LimiteComentarios:
-                    self.bloqueo = "http_429"
-                    raise
+                    self._bloquear("http_429")
             time.sleep(self._espera_429(respuesta))
             respuesta = self.sesion.post(url, json=payload, timeout=TIMEOUT)
         if respuesta.status_code == 429:
@@ -745,13 +763,11 @@ class ClienteYouTube:
                 respuesta = self.siguiente(clave, ctx, presupuesto=presupuesto, **consulta)
             except LimiteComentarios as exc:
                 motivo = str(exc)
-                if self.bloqueo:
-                    errores.append(f"Recoleccion detenida por bloqueo: {self.bloqueo}")
                 break
             except (YouTubeError, requests.RequestException, ValueError) as exc:
                 motivo = "error_pagina"
                 errores.append(str(exc))
-                error_red = isinstance(exc, requests.RequestException)
+                error_red = _es_error_red(exc)
                 time.sleep(self.pausar)
                 break
             items = self._continuaciones_items(respuesta)
@@ -838,12 +854,10 @@ class ClienteYouTube:
                     respuesta = self.siguiente(clave, ctx, presupuesto=presupuesto, **actual)
                 except LimiteComentarios as exc:
                     motivo = str(exc)
-                    if self.bloqueo:
-                        error = f"Recoleccion detenida por bloqueo: {self.bloqueo}"
                     break
                 except (YouTubeError, requests.RequestException, ValueError) as exc:
                     motivo, error = "error_hilo", str(exc)
-                    error_red = error_red or isinstance(exc, requests.RequestException)
+                    error_red = error_red or _es_error_red(exc)
                     time.sleep(self.pausar)
                     break
                 items = self._continuaciones_items(respuesta)
@@ -995,7 +1009,7 @@ def _ejecutar_video(cliente: ClienteYouTube, video_id: str, args: argparse.Names
         if cliente.bloqueo:
             resultado[comando] = {
                 "estado": "no_procesado", "motivo": cliente.bloqueo,
-                "error": f"Operacion no procesada por bloqueo: {cliente.bloqueo}",
+                "error": _mensaje_bloqueo(cliente.bloqueo),
             }
             continue
         try:
@@ -1021,7 +1035,7 @@ def _errores_resultado(datos: dict) -> list[str]:
     return errores
 
 
-def _guardar_recibo(args: argparse.Namespace, resultados: list[dict]) -> dict:
+def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatorio: bool = False) -> dict:
     recibo = {
         "comando": args.comando, "capturado_en_utc": _sello(), "max_videos": MAX_VIDEOS,
         "total": len(resultados), "exitosos": sum(r["ok"] for r in resultados), "resultados": resultados,
@@ -1029,8 +1043,18 @@ def _guardar_recibo(args: argparse.Namespace, resultados: list[dict]) -> dict:
     }
     ruta = Path(args.out) / f"lote_{args.comando}.json"
     temporal = ruta.with_suffix(".json.tmp")
-    _escribir_json(temporal, recibo)
-    temporal.replace(ruta)
+    try:
+        _escribir_json(temporal, recibo)
+        temporal.replace(ruta)
+    except OSError as exc:
+        if obligatorio:
+            raise
+        print(f"advertencia al escribir recibo; se reintentara en la siguiente actualizacion: {exc}", file=sys.stderr)
+    finally:
+        try:
+            temporal.unlink(missing_ok=True)
+        except OSError as exc:
+            print(f"advertencia al limpiar recibo temporal: {exc}", file=sys.stderr)
     return recibo
 
 
@@ -1061,8 +1085,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if lote:
             recibo = _guardar_recibo(args, resultados)
-        for registro in resultados:
-            posicion, entrada = registro["posicion"], registro["entrada"]
+        for indice, registro in enumerate(resultados):
+            entrada = registro["entrada"]
             try:
                 video_id = extraer_id_video(entrada)
             except YouTubeError as exc:
@@ -1087,19 +1111,21 @@ def main(argv: list[str] | None = None) -> int:
                     registro.update(error=str(exc))
                     if not lote:
                         print(f"error: {exc}", file=sys.stderr)
-                        return 3 if isinstance(exc, requests.RequestException) else 1
+                        return 3 if _es_error_red(exc) else 1
             registro["estado"] = "procesado"
             registro.pop("motivo")
             if cliente.bloqueo:
                 registro["bloqueo"] = cliente.bloqueo
-                for pendiente in resultados[posicion:]:
+                for pendiente in resultados[indice + 1:]:
                     pendiente["motivo"] = cliente.bloqueo
             if lote:
                 recibo = _guardar_recibo(args, resultados)
             if cliente.bloqueo:
                 break
-            if posicion < len(entradas):
+            if indice + 1 < len(entradas):
                 time.sleep(cliente.pausar)
+        if lote:
+            recibo = _guardar_recibo(args, resultados, obligatorio=True)
     except OSError as exc:
         print(f"error al escribir recibo: {exc}", file=sys.stderr)
         return 1

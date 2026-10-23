@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.2 — 2026-10-22
+
+- `LOGIN_REQUIRED` distingue restricciones propias del video de un bloqueo explícito de bots mediante `reason` y la estructura de error del reproductor; edad, acceso privado o motivo desconocido no detienen otros videos.
+- Los fallos de escritura de recibos intermedios emiten advertencia y no interrumpen el lote; se reintenta en la siguiente actualización y se exige una escritura final. Se intenta limpiar el temporal incluso ante fallos.
+- JSON inválido en respuestas HTTP 200 no se clasifica como fallo de transporte: salida 1 y `error_red=false`, también en hilos y en `player`.
+- Entrada única al estado de bloqueo y mensaje compartido. Un 429 sin presupuesto para reintentar se informa como `error_pagina` o `error_hilo`, no como agotamiento ordinario de presupuesto.
+- Índice explícito para marcar entradas pendientes; pruebas de escritura con simulaciones selectivas y conteo documentado. Regresiones offline de restricciones por video, recibos transitorios/finales y JSON inválido.
+
 ## 1.2.1 — 2026-10-22
 
 - Interrupción del lote y de las operaciones/hilos pendientes ante HTTP 429 agotado o `LOGIN_REQUIRED`; recibo con entradas no procesadas y motivo explícito.
