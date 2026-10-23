@@ -200,5 +200,233 @@ class WorkValidation(unittest.TestCase):
         self.assertEqual(vr.independence_group("sitio:www.scielo.org.ar"), "sitio:www.scielo.org.ar")
 
 
+class OrderedAuthorship(unittest.TestCase):
+    def test_source_truncation_keeps_literal_metadata_for_visible_authors(self):
+        result = rec("crossref", authors=["Atlas", "et al."],
+                     author_details=[{"literal": "Atlas"}, {"family": "et al."}])
+        self.assertEqual(result["author_details"], [{"literal": "Atlas"}])
+        self.assertFalse(result["authors_complete"])
+
+    def test_provided_pmid_is_fetched_even_when_doi_registry_reports_missing(self):
+        with mock.patch.object(vr, "registration_agency", return_value=None), \
+                mock.patch.object(vr, "pubmed", return_value=rec("pubmed")) as fetch:
+            result = vr.validate_doi("10.1234/test", {"pmid": "123"})
+        fetch.assert_called_once_with("123")
+        self.assertEqual(result["verdict"], "not-found")
+        self.assertEqual(result["records"][0]["source"], "pubmed")
+
+    def test_visible_extra_authors_conflict_with_a_complete_shorter_source(self):
+        self.assertFalse(vr.agree(rec("crossref", authors=["Messeri"]),
+                                 rec("openalex", authors=["Messeri", "Crockett"], authors_complete=False))["agree"])
+
+    def test_null_source_authors_are_incomplete_not_an_adapter_failure(self):
+        self.assertFalse(vr._from_crossref({"author": None})["authors_complete"])
+        self.assertFalse(vr._from_openalex({"authorships": None})["authors_complete"])
+        with mock.patch.object(vr, "get_json", return_value={"data": {"attributes": {"creators": None}}}):
+            self.assertFalse(vr.datacite_doi("10.1234/test")["authors_complete"])
+        response = mock.Mock(status=200)
+        response.json.return_value = {"author": None}
+        with mock.patch.object(vr, "request", return_value=response):
+            self.assertFalse(vr.csl_negotiation("10.1234/test", "mEDRA")["authors_complete"])
+
+    def test_shared_compound_component_does_not_hide_substitution(self):
+        self.assertTrue(vr.compare_expected(rec("crossref", authors=["García Márquez"]),
+                                            {"authors": ["García López"]}))
+
+    def test_terminal_etal_marker_is_an_explicit_prefix(self):
+        source = rec("crossref", authors=["Messeri", "Crockett"])
+        self.assertEqual(vr.compare_expected(source, {"authors": ["Messeri et al."]}), [])
+        partial = rec("crossref", authors=["Messeri", "et al."])
+        self.assertFalse(partial["authors_complete"])
+        self.assertEqual(partial["authors"], ["Messeri"])
+
+    def test_incomplete_first_source_does_not_hide_complete_source_mismatch(self):
+        result = vr.verdict([rec("openalex", authors=["Messeri"], authors_complete=False), rec("crossref")],
+                            {"authors": ["Messeri", "Inventado"]}, [])
+        self.assertEqual(result["diffs_vs_manuscript"][0]["position"], 2)
+        self.assertFalse(result["authorship"]["validated"])
+
+    def test_complete_sources_with_no_full_manuscript_never_claim_authorship_validation(self):
+        result = vr.verdict([rec("crossref"), rec("openalex")], EXPECTED, [])
+        self.assertFalse(result["authorship"]["validated"])
+        self.assertEqual(result["authorship"]["manuscript_scope"], "first-author-only")
+
+    def test_doi_pmid_cli_reaches_validator(self):
+        with mock.patch.object(sys, "argv", ["validate_ref.py", "doi", "10.1234/test", "--pmid", "123"]), \
+                mock.patch.object(vr, "validate_doi", return_value={}) as handler, mock.patch.object(vr, "emit"):
+            vr.main()
+        self.assertEqual(handler.call_args.args[1]["pmid"], "123")
+
+    def test_invented_second_author_is_a_mismatch(self):
+        result = vr.verdict([rec("crossref"), rec("openalex")],
+                            {**EXPECTED, "authors": ["Messeri", "Inventado"]}, [])
+        self.assertEqual(result["verdict"], "mismatch")
+        self.assertEqual(result["diffs_vs_manuscript"][0]["position"], 2)
+
+    def test_reordered_coauthors_conflict_even_with_same_first_and_count(self):
+        a = rec("crossref", authors=["Messeri", "Crockett", "Quirós"])
+        b = rec("openalex", authors=["Messeri", "Quirós", "Crockett"])
+        self.assertFalse(vr.agree(a, b)["agree"])
+        self.assertEqual(len(vr.agree(a, b)["authorship"]["diffs"]), 2)
+
+    def test_particles_and_diacritics_match_at_every_position(self):
+        a = rec("crossref", authors=["de la Cruz", "García Márquez", "van Beethoven"])
+        b = rec("openalex", authors=["Cruz", "Garcia Marquez", "Beethoven"])
+        self.assertTrue(vr.agree(a, b)["agree"])
+        self.assertEqual(vr._family("Ludwig van Beethoven"), "van Beethoven")
+
+    def test_declared_etal_accepts_only_a_proper_ordered_prefix(self):
+        source = rec("crossref", authors=["Messeri", "Crockett", "Quirós"])
+        self.assertEqual(vr.compare_expected(source, {"authors": ["Messeri", "Crockett"], "etal": True}), [])
+        for names in (["Messeri", "Inventado"], ["Crockett", "Messeri"],
+                      ["Messeri", "Crockett", "Quirós"]):
+            with self.subTest(names=names):
+                self.assertTrue(vr.compare_expected(source, {"authors": names, "etal": True}))
+        self.assertTrue(vr.compare_expected(source, {"authors": ["Messeri", "Crockett"]}))
+
+    def test_literal_consortium_is_not_a_person_with_the_same_surname(self):
+        source = rec("crossref", authors=["Atlas"], author_details=[{"literal": "Atlas"}])
+        self.assertTrue(vr.compare_expected(source, {"authors": [{"family": "Atlas"}]}))
+        self.assertEqual(vr.compare_expected(source, {"authors": [{"literal": "ATLAS"}]}), [])
+
+    def test_omitted_or_partial_source_authors_are_not_fully_validated(self):
+        for partial in (rec("openalex", authors=[]),
+                        rec("openalex", authors=["Messeri"], authors_complete=False)):
+            with self.subTest(partial=partial):
+                result = vr.verdict([rec("crossref"), partial], {**EXPECTED, "authors": ["Messeri", "Crockett"]}, [])
+                self.assertEqual(result["verdict"], "single-source")
+                self.assertFalse(result["authorship"]["validated"])
+                self.assertTrue(result["warnings"])
+
+    def test_partial_source_still_exposes_substituted_visible_author(self):
+        partial = rec("openalex", authors=["Messeri", "Inventado"], authors_complete=False)
+        self.assertFalse(vr.agree(rec("crossref"), partial)["agree"])
+
+    def test_source_adapters_preserve_order_and_literal_authors(self):
+        crossref = vr._from_crossref({"author": [{"family": "de la Cruz"}, {"name": "Atlas Consortium"}]})
+        self.assertEqual(crossref["authors"], ["de la Cruz", "Atlas Consortium"])
+        self.assertEqual(crossref["author_details"][1], {"literal": "Atlas Consortium"})
+        self.assertFalse(vr._from_crossref({})["authors_complete"])
+        with mock.patch.object(vr, "get_json", return_value={"data": {"attributes": {
+                "creators": [{"familyName": "Quirós"}, {"name": "Atlas", "nameType": "Organizational"}]}}}):
+            datacite = vr.datacite_doi("10.1234/test")
+        self.assertEqual(datacite["author_details"][1], {"literal": "Atlas"})
+        response = mock.Mock(status=200)
+        response.json.return_value = {"author": [{"family": "Cruz", "non-dropping-particle": "de la"}, {"literal": "Atlas"}]}
+        with mock.patch.object(vr, "request", return_value=response):
+            csl = vr.csl_negotiation("10.1234/test", "mEDRA")
+        self.assertEqual(csl["authors"], ["de la Cruz", "Atlas"])
+
+    def test_openalex_truncation_and_missing_entries_are_explicit(self):
+        result = vr._from_openalex({"authors_count": 3, "authorships": [
+            {"author": {"display_name": "Ana de la Cruz"}}, {"author": {"display_name": "Lisa Messeri"}}]})
+        self.assertEqual(result["authors"], ["de la Cruz", "Messeri"])
+        self.assertFalse(result["authors_complete"])
+        self.assertTrue(result["authorship_warnings"])
+
+    def test_cli_full_authors_repeatable_and_legacy_single_author(self):
+        for argv, names, legacy in [
+                (["--authors", '["Messeri", {"literal": "Atlas"}]', "--etal"], ["Messeri", {"literal": "Atlas"}], False),
+                (["--author", "Messeri", "--author", "Crockett"], ["Messeri", "Crockett"], False),
+                (["--author", "Messeri"], None, True)]:
+            with self.subTest(argv=argv), mock.patch.object(sys, "argv", ["validate_ref.py", "doi", "10.1234/test", *argv]), \
+                    mock.patch.object(vr, "validate_doi", return_value={}) as handler, mock.patch.object(vr, "emit"):
+                vr.main()
+            expected = handler.call_args.args[1]
+            self.assertEqual(expected.get("authors"), names)
+            self.assertEqual(expected.get("author"), "Messeri" if legacy else None)
+
+    def test_doi_uses_provided_and_discovered_pmid(self):
+        for supplied in (True, False):
+            with self.subTest(supplied=supplied), \
+                    mock.patch.object(vr, "registration_agency", return_value="Crossref"), \
+                    mock.patch.object(vr, "crossref_doi", return_value=rec("crossref")), \
+                    mock.patch.object(vr, "openalex_doi", return_value=rec("openalex", pmid="123")), \
+                    mock.patch.object(vr, "pubmed", return_value=rec("pubmed", doi="10.1234/test")) as fetch:
+                vr.validate_doi("10.1234/test", {"pmid": "123"} if supplied else {})
+            fetch.assert_called_once_with("123")
+
+
+PUBMED_SUMMARY = {"result": {"123": {"title": "A study.", "pubdate": "2024", "fulljournalname": "Journal",
+    "authors": [{"name": "de la Cruz A"}, {"name": "Atlas Consortium", "authtype": "CollectiveName"}],
+    "articleids": [{"idtype": "doi", "value": "10.1234/test"}]}}}
+PUBMED_XML = """<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article>
+<ArticleTitle>A <i>study</i></ArticleTitle><Journal><Title>Journal</Title><JournalIssue><PubDate><Year>2024</Year>
+</PubDate></JournalIssue></Journal><AuthorList CompleteYN="Y"><Author><LastName>de la Cruz</LastName>
+<ForeName>Ana</ForeName></Author><Author><CollectiveName>Atlas Consortium</CollectiveName></Author>
+</AuthorList></Article></MedlineCitation><PubmedData><ArticleIdList><ArticleId IdType="doi">10.1234/test</ArticleId>
+</ArticleIdList></PubmedData></PubmedArticle></PubmedArticleSet>"""
+
+
+class PubMedAuthorship(unittest.TestCase):
+    def test_pmid_command_path_uses_efetch_with_summary_metadata(self):
+        with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                mock.patch.object(vr, "request", return_value=FakeResponse(PUBMED_XML)), \
+                mock.patch.object(vr, "crossref_doi", return_value=rec("crossref", title="A study",
+                    authors=["de la Cruz", "Atlas Consortium"],
+                    author_details=[{"family": "de la Cruz"}, {"literal": "Atlas Consortium"}])):
+            result = vr.validate_pmid("123", {"authors": [{"family": "Cruz"}, {"literal": "Atlas Consortium"}]})
+        self.assertEqual(result["verdict"], "validated")
+        self.assertTrue(result["authorship"]["validated"])
+
+    def test_untrusted_xml_entity_declaration_falls_back_without_expansion(self):
+        body = '<!DOCTYPE x [<!ENTITY instruction "untrusted">]><PubmedArticleSet>&instruction;</PubmedArticleSet>'
+        with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                mock.patch.object(vr, "request", return_value=FakeResponse(body)):
+            result = vr.pubmed("123")
+        self.assertFalse(result["authors_complete"])
+        self.assertNotIn("untrusted", result["title"])
+
+    def test_efetch_uses_ordered_people_and_collective_names(self):
+        with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                mock.patch.object(vr, "request", return_value=FakeResponse(PUBMED_XML)) as fetch:
+            result = vr.pubmed("123")
+        self.assertTrue(result["authors_complete"])
+        self.assertEqual(result["authors"], ["de la Cruz", "Atlas Consortium"])
+        self.assertEqual(result["author_details"][1], {"literal": "Atlas Consortium"})
+        self.assertEqual(result["container"], "Journal")
+        self.assertEqual(fetch.call_args.kwargs["params"]["retmode"], "xml")
+
+    def test_efetch_failure_keeps_esummary_with_explicit_warning(self):
+        for response in (FakeResponse("<eFetchResult><ERROR>unavailable</ERROR></eFetchResult>"),
+                         FakeResponse("<broken"), FakeResponse("", 503), FakeResponse("<PubmedArticleSet/>")):
+            with self.subTest(body=response.body), mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                    mock.patch.object(vr, "request", return_value=response):
+                result = vr.pubmed("123")
+            self.assertEqual(result["title"], "A study")
+            self.assertEqual(result["authors"], ["de la Cruz", "Atlas Consortium"])
+            self.assertFalse(result["authors_complete"])
+            self.assertTrue(result["authorship_warnings"])
+
+    def test_efetch_transport_error_retains_summary(self):
+        with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                mock.patch.object(vr, "request", side_effect=ConnectionError("timeout")):
+            result = vr.pubmed("123")
+        self.assertFalse(result["authors_complete"])
+        self.assertIn("timeout", " ".join(result["authorship_warnings"]))
+
+    def test_efetch_can_recover_when_esummary_is_unavailable(self):
+        with mock.patch.object(vr, "get_json", side_effect=ConnectionError("summary timeout")), \
+                mock.patch.object(vr, "request", return_value=FakeResponse(PUBMED_XML)):
+            result = vr.pubmed("123")
+        self.assertEqual((result["title"], result["doi"], result["year"]), ("A study", "10.1234/test", "2024"))
+        self.assertTrue(result["authors_complete"])
+        self.assertTrue(result["authorship_warnings"])
+
+    def test_incomplete_xml_author_list_cannot_be_fully_validated(self):
+        with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                mock.patch.object(vr, "request", return_value=FakeResponse(PUBMED_XML.replace('CompleteYN="Y"', 'CompleteYN="N"'))):
+            result = vr.pubmed("123")
+        self.assertFalse(result["authors_complete"])
+        self.assertTrue(result["authorship_warnings"])
+
+    def test_mismatched_xml_pmid_does_not_replace_summary_authors(self):
+        with mock.patch.object(vr, "get_json", return_value=PUBMED_SUMMARY), \
+                mock.patch.object(vr, "request", return_value=FakeResponse(PUBMED_XML.replace(">123<", ">999<"))):
+            result = vr.pubmed("123")
+        self.assertFalse(result["authors_complete"])
+        self.assertTrue(result["authorship_warnings"])
+
+
 if __name__ == "__main__":
     unittest.main()

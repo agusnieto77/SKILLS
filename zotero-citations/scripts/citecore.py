@@ -1,8 +1,8 @@
 """Style-independent manuscript handling for the citation audit (stdlib only).
 
-Reading (.docx with anchored footnotes, Markdown/Pandoc footnotes, plain text),
-reference-section splitting, author-date citation extraction, quote/context
-attachment, author-name matching and the lint rules every style shares.
+Reading (.docx with anchored footnotes, PDF, Markdown/Quarto, TeX and BibTeX),
+reference-section splitting, author-date and exact-key citation extraction,
+bibliography parsing, quote/context attachment, author matching and shared lint.
 Style-specific parsing and rules live in style_apa.py and style_chicago.py.
 """
 from __future__ import annotations
@@ -425,9 +425,539 @@ def read_document(path: Path) -> dict:
         return read_docx(path)
     if suffix == ".pdf":
         return read_pdf(path)
-    if suffix in (".md", ".markdown", ".txt", ".text", ""):
-        return read_text(path)
-    fail(f"Unsupported input {suffix!r}: convert to .docx, .pdf, .md or .txt first.")
+    if suffix in (".md", ".markdown", ".qmd", ".tex", ".bib", ".txt", ".text", ""):
+        return read_text(path) if suffix != ".bib" else {"paragraphs": [], "notes": [], "zotero_fields": []}
+    fail(f"Unsupported input {suffix!r}: use .docx, .pdf, .md, .qmd, .tex, .bib or .txt.")
+
+
+# --------------------------------------------------------------------------- bibliography and exact citation keys
+
+def source_location(text: str, file: str, start: int, end: int) -> dict:
+    """Character offsets, one-based line/column; end is exclusive."""
+    return {"file": str(file), "line": text.count("\n", 0, start) + 1,
+            "column": start - text.rfind("\n", 0, start), "offset": start, "end": end}
+
+
+def read_source(path: Path) -> str:
+    raw = path.read_bytes()
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252")
+
+
+class _BibParser:
+    """Small recursive-descent BibTeX reader. Values remain data, never TeX execution."""
+
+    def __init__(self, text: str, file: str):
+        self.text, self.file, self.pos = text, str(file), 0
+        self.entries, self.macros, self.warnings = [], {}, []
+
+    def warn(self, message: str, start: int, rule: str = "B-PARSE") -> None:
+        self.warnings.append(finding(rule, "warning", self.file, message, None,
+                                     location=source_location(self.text, self.file, start, self.pos)))
+
+    def space(self) -> None:
+        while self.pos < len(self.text):
+            if self.text[self.pos].isspace():
+                self.pos += 1
+            elif self.text[self.pos] == "%":
+                end = self.text.find("\n", self.pos)
+                self.pos = len(self.text) if end < 0 else end + 1
+            else:
+                break
+
+    def identifier(self) -> str:
+        start = self.pos
+        while self.pos < len(self.text) and (self.text[self.pos].isalnum() or self.text[self.pos] in "_:-./"):
+            self.pos += 1
+        if start == self.pos:
+            raise ValueError("Se esperaba un identificador.")
+        return self.text[start:self.pos]
+
+    def literal(self) -> str:
+        opening = self.text[self.pos]
+        closing = "}" if opening == "{" else '"'
+        self.pos += 1
+        start, depth = self.pos, 0
+        while self.pos < len(self.text):
+            char = self.text[self.pos]
+            if char == "\\":
+                self.pos += 2
+                continue
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                if opening == "{" and depth == 0:
+                    value = self.text[start:self.pos]
+                    self.pos += 1
+                    return value
+                depth -= 1
+                if depth < 0:
+                    raise ValueError("Llave de cierre inesperada en un valor entre comillas.")
+            elif char == closing and depth == 0:
+                value = self.text[start:self.pos]
+                self.pos += 1
+                return value
+            self.pos += 1
+        raise ValueError("Valor sin cierre de llaves o comillas.")
+
+    def value(self, closing: str) -> list[tuple[str, str]]:
+        parts = []
+        while True:
+            self.space()
+            if self.pos >= len(self.text):
+                raise ValueError("Falta el valor del campo.")
+            char = self.text[self.pos]
+            if char in '{"':
+                parts.append(("literal", self.literal()))
+            else:
+                start = self.pos
+                while self.pos < len(self.text) and not self.text[self.pos].isspace() \
+                        and self.text[self.pos] not in ",#" + closing:
+                    self.pos += 1
+                token = self.text[start:self.pos]
+                if not token or any(c in token for c in '{}="'):
+                    raise ValueError("Valor de campo no válido.")
+                parts.append(("literal" if token.isdigit() else "macro", token))
+            self.space()
+            if self.pos < len(self.text) and self.text[self.pos] == "#":
+                self.pos += 1
+                continue
+            return parts
+
+    def parse(self) -> dict:
+        while self.pos < len(self.text):
+            self.space()
+            if self.pos >= len(self.text):
+                break
+            if self.text[self.pos] != "@":
+                # Free text outside entries is legal BibTeX commentary.
+                self.pos += 1
+                continue
+            start = self.pos
+            try:
+                self.pos += 1
+                kind = self.identifier().lower()
+                self.space()
+                if self.pos >= len(self.text) or self.text[self.pos] not in "{(":
+                    raise ValueError("Falta el delimitador inicial de la entrada.")
+                closing = "}" if self.text[self.pos] == "{" else ")"
+                self.pos += 1
+                self.space()
+                if kind == "comment":
+                    depth = 1
+                    quoted = False
+                    while self.pos < len(self.text) and depth:
+                        char = self.text[self.pos]
+                        if char == "\\":
+                            self.pos += 2
+                            continue
+                        if closing == ")" and char == '"':
+                            quoted = not quoted
+                        if not quoted:
+                            depth += char == ("{" if closing == "}" else "(")
+                            depth -= char == closing
+                        self.pos += 1
+                    if depth:
+                        raise ValueError("Comentario sin cierre.")
+                    continue
+                if kind == "preamble":
+                    self.value(closing)
+                    self.space()
+                    if self.pos < len(self.text) and self.text[self.pos] == ",":
+                        self.pos += 1
+                        self.space()
+                    if self.pos >= len(self.text) or self.text[self.pos] != closing:
+                        raise ValueError("Preámbulo sin cierre.")
+                    self.pos += 1
+                    continue
+                if kind == "string":
+                    name = self.identifier().lower()
+                    self.space()
+                    if self.pos >= len(self.text) or self.text[self.pos] != "=":
+                        raise ValueError("Falta '=' en la macro.")
+                    self.pos += 1
+                    value = self.value(closing)
+                    self.space()
+                    if self.pos < len(self.text) and self.text[self.pos] == ",":
+                        self.pos += 1
+                        self.space()
+                    if self.pos >= len(self.text) or self.text[self.pos] != closing:
+                        raise ValueError("Macro sin cierre.")
+                    self.pos += 1
+                    self.macros[name] = value
+                    continue
+                key_start = self.pos
+                while self.pos < len(self.text) and self.text[self.pos] not in "," + closing and not self.text[self.pos].isspace():
+                    self.pos += 1
+                key = self.text[key_start:self.pos]
+                if not key:
+                    raise ValueError("Entrada sin clave.")
+                self.space()
+                fields = {}
+                while self.pos < len(self.text) and self.text[self.pos] != closing:
+                    if self.text[self.pos] != ",":
+                        raise ValueError("Falta una coma entre campos.")
+                    self.pos += 1
+                    self.space()
+                    if self.pos < len(self.text) and self.text[self.pos] == closing:
+                        break
+                    name = self.identifier().lower()
+                    self.space()
+                    if self.pos >= len(self.text) or self.text[self.pos] != "=":
+                        raise ValueError("Falta '=' después del nombre del campo.")
+                    self.pos += 1
+                    fields[name] = self.value(closing)
+                if self.pos >= len(self.text):
+                    raise ValueError("Entrada bibliográfica sin cierre.")
+                self.pos += 1
+                self.entries.append({"citekey": key, "entry_type": kind, "_values": fields,
+                                     "original_entry": self.text[start:self.pos],
+                                     "location": source_location(self.text, self.file, start, self.pos),
+                                     "key_location": source_location(self.text, self.file, key_start, key_start + len(key))})
+            except ValueError as error:
+                self.warn(str(error), start)
+                # Recovery starts at a line-leading entry, even after an unclosed value.
+                next_entry = re.search(r"(?m)^[ \t]*@", self.text[start + 1:])
+                self.pos = start + 1 + next_entry.end() - 1 if next_entry else len(self.text)
+        months = dict(zip(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"),
+                          ("January", "February", "March", "April", "May", "June", "July", "August",
+                           "September", "October", "November", "December"), strict=True))
+
+        def resolve(parts, stack, location):
+            result, complete = [], True
+            for kind, value in parts:
+                if kind == "literal":
+                    result.append(value)
+                elif value.lower() in self.macros and value.lower() not in stack:
+                    resolved, ok = resolve(self.macros[value.lower()], stack | {value.lower()}, location)
+                    result.append(resolved)
+                    complete = complete and ok
+                elif value.lower() in months:
+                    result.append(months[value.lower()])
+                else:
+                    result.append(value)
+                    complete = False
+                    self.warnings.append(finding("B-UNRESOLVED-MACRO", "warning", value,
+                                                 "Macro bibliográfica no resuelta o cíclica; datos incompletos.",
+                                                 None, location=location))
+            return "".join(result), complete
+
+        for entry in self.entries:
+            entry["fields"], entry["complete"] = {}, True
+            for name, parts in entry.pop("_values").items():
+                value, ok = resolve(parts, set(), entry["location"])
+                entry["fields"][name] = value
+                entry["complete"] = entry["complete"] and ok
+        return {"entries": self.entries, "warnings": self.warnings, "complete": not self.warnings}
+
+
+def parse_bibliography(text: str, file: str = "") -> dict:
+    """Parse without executing TeX or following paths; diagnostics make any loss explicit."""
+    return _BibParser(text, file).parse()
+
+
+def _bib_names(value: str) -> list[str]:
+    """Split BibTeX 'and' only outside protected name groups."""
+    names, depth, start, pos = [], 0, 0, 0
+    while pos < len(value):
+        char = value[pos]
+        if char == "\\":
+            pos += 2
+            continue
+        depth += (char == "{") - (char == "}")
+        match = re.match(r"\s+and\s+", value[pos:], re.I) if depth == 0 else None
+        if match:
+            names.append(value[start:pos].strip())
+            pos += match.end()
+            start = pos
+        else:
+            pos += 1
+    return names + ([value[start:].strip()] if value[start:].strip() else [])
+
+
+def _bib_plain(value: str) -> str:
+    """Remove grouping braces, retaining escaped literal braces and TeX commands."""
+    return re.sub(r"\s+", " ", re.sub(r"(?<!\\)[{}]", "", value)).strip()
+
+
+def bibliography_reference(entry: dict, index: int) -> dict:
+    fields = entry["fields"]
+    ref = base_reference(entry["original_entry"])
+    details, names, etal = [], [], False
+    for name in _bib_names(fields.get("author", "")):
+        if name.lower() == "others":
+            etal = True
+            continue
+        if name.startswith("{") and name.endswith("}"):
+            literal = _bib_plain(name)
+            details.append({"literal": literal})
+            names.append(literal)
+        elif "," in name:
+            parts = [_bib_plain(part) for part in name.split(",")]
+            family = parts[0]
+            given = parts[-1]
+            # In "von Last, Jr, First", preserve the suffix without treating it as an author.
+            details.append({"family": family, "given": given, **({"suffix": parts[1]} if len(parts) > 2 else {})})
+            names.append(family)
+        else:
+            plain = _bib_plain(name)
+            family = family_of(plain)
+            details.append({"family": family, "given": plain[:-len(family)].strip()})
+            names.append(family)
+    year = re.match(r"\d{4}[a-z]?", fields.get("year") or fields.get("date", ""))
+    kind = {"article": "article", "book": "book", "incollection": "chapter", "inbook": "chapter",
+            "inproceedings": "chapter", "online": "web", "phdthesis": "thesis", "mastersthesis": "thesis"}
+    ref.update(entry)
+    ref.update(index=index, paragraph=None, section="bibliography", shape="bib", parsed=entry["complete"],
+               title=_bib_plain(fields.get("title", "")) or None, authors=names, author_details=details,
+               authors_complete=bool(names) and not etal, authorship_warnings=[], etal=etal,
+               corporate=names[0] if len(details) == 1 and "literal" in details[0] else None,
+               year=year.group(0) if year else None, kind=kind.get(entry["entry_type"], "unknown"),
+               doi=normalize_doi(fields["doi"]) if fields.get("doi") else None,
+               isbn=normalize_isbn(fields["isbn"]) if fields.get("isbn") else None, url=fields.get("url"),
+               journal=_bib_plain(fields.get("journaltitle") or fields.get("journal", "")) or None,
+               publisher=_bib_plain(fields.get("publisher", "")) or None)
+    return ref
+
+
+def load_bibliographies(paths) -> dict:
+    entries, warnings = [], []
+    for path in paths:
+        path = Path(path)
+        parsed = parse_bibliography(read_source(path), str(path))
+        entries.extend(parsed["entries"])
+        warnings.extend(parsed["warnings"])
+    by_key = defaultdict(list)
+    for entry in entries:
+        by_key[entry["citekey"]].append(entry)
+    for key, matches in by_key.items():
+        if len(matches) > 1:
+            warnings.append(finding("B-DUPLICATE-KEY", "error", key,
+                                    "Clave bibliográfica repetida; no se elige una entrada automáticamente.", None,
+                                    location=matches[0]["location"], locations=[e["location"] for e in matches]))
+    resolved = set()
+
+    def inherit(entry, stack):
+        identity = id(entry)
+        if identity in resolved:
+            return
+        if identity in stack:
+            entry["complete"] = False
+            warnings.append(finding("B-INHERITANCE", "warning", entry["citekey"],
+                                    "Herencia crossref/xdata cíclica; entrada incompleta.", None, location=entry["location"]))
+            return
+        own = dict(entry["fields"])
+        inherited = {}
+        targets = [k.strip() for k in own.get("xdata", "").split(",") if k.strip()]
+        if own.get("crossref"):
+            targets.append(own["crossref"].strip())
+        for key in targets:
+            parents = by_key.get(key, [])
+            if len(parents) != 1:
+                entry["complete"] = False
+                warnings.append(finding("B-INHERITANCE", "warning", entry["citekey"],
+                                        f"Herencia crossref/xdata no resuelta: {key}.", None, location=entry["location"]))
+                continue
+            parent = parents[0]
+            inherit(parent, stack | {identity})
+            entry["complete"] = entry["complete"] and parent["complete"]
+            inherited.update({k: v for k, v in parent["fields"].items() if k not in ("crossref", "xdata")})
+            if "crossref" in own and key == own["crossref"].strip() and parent["fields"].get("title"):
+                inherited["booktitle"] = parent["fields"]["title"]
+                inherited.pop("title", None)
+        entry["fields"] = {**inherited, **own}
+        resolved.add(identity)
+
+    for entry in entries:
+        inherit(entry, set())
+    return {"references": [bibliography_reference(e, i) for i, e in enumerate(
+                e for e in entries if e["entry_type"] != "xdata")],
+            "warnings": warnings, "complete": not warnings and all(e["complete"] for e in entries)}
+
+
+def _masked_source(text: str, tex: bool) -> str:
+    """Blank non-prose while preserving every offset and newline."""
+    chars = list(text)
+
+    def blank(start, end):
+        chars[start:end] = ["\n" if c == "\n" else " " for c in text[start:end]]
+
+    if tex:
+        for match in re.finditer(r"\\begin\{(verbatim\*?|Verbatim|lstlisting|minted|comment)\}.*?\\end\{\1\}", text, re.S):
+            blank(*match.span())
+        for match in re.finditer(r"\\verb\*?([^\w\s])(.*?)\1", "".join(chars)):
+            blank(*match.span())
+        pos = 0
+        while pos < len(text):
+            if chars[pos] == "\\":
+                pos += 2
+            elif chars[pos] == "%":
+                end = text.find("\n", pos)
+                end = len(text) if end < 0 else end
+                blank(pos, end)
+                pos = end
+            else:
+                pos += 1
+    else:
+        front = re.match(r"\A---[ \t]*\r?\n.*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)", text, re.S)
+        if front:
+            blank(*front.span())
+        for match in re.finditer(r"<!--.*?(?:-->|\Z)", text, re.S):
+            blank(*match.span())
+        for match in re.finditer(r"<(code|pre)\b[^>]*>.*?(?:</\1\s*>|\Z)", "".join(chars), re.I | re.S):
+            blank(*match.span())
+        fence, offset = None, 0
+        for line in "".join(chars).splitlines(keepends=True):
+            match = re.match(r" {0,3}(`{3,}|~{3,})", line)
+            if fence:
+                blank(offset, offset + len(line))
+                if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence) \
+                        and not line[match.end():].strip():
+                    fence = None
+            elif match:
+                fence = match.group(1)
+                blank(offset, offset + len(line))
+            elif line.startswith(("    ", "\t")):
+                blank(offset, offset + len(line))
+            offset += len(line)
+        for match in re.finditer(r"(`+)(?!`)(.*?)(?<!`)\1(?!`)", "".join(chars), re.S):
+            blank(*match.span())
+        for match in re.finditer(r"(?:https?://|mailto:)\S+|<[^>\n]*@[^>\n]*>|"
+                                 r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}", "".join(chars)):
+            blank(*match.span())
+    return "".join(chars)
+
+
+def _balanced_group(text: str, pos: int, opening: str, closing: str):
+    if pos >= len(text) or text[pos] != opening:
+        return None
+    depth, braces, start = 1, 0, pos + 1
+    pos += 1
+    while pos < len(text):
+        char = text[pos]
+        if char == "\\":
+            pos += 2
+            continue
+        if opening == "[":
+            braces += (char == "{") - (char == "}")
+        if not braces:
+            depth += char == opening
+            depth -= char == closing
+        if depth == 0:
+            return start, pos, pos + 1
+        pos += 1
+    return None
+
+
+def find_key_citations(text: str, file: str) -> list[dict]:
+    """One occurrence per exact, case-sensitive key, with source_check-compatible context."""
+    tex = Path(file).suffix.lower() == ".tex"
+    masked = _masked_source(text, tex)
+    occurrences = []
+    if tex:
+        pos = 0
+        while pos < len(masked):
+            if masked[pos] != "\\":
+                pos += 1
+                continue
+            command = re.match(r"\\(cite|parencite|textcite|autocite|citep|citet)(?![A-Za-z])\*?", masked[pos:])
+            if not command:
+                pos += 2
+                continue
+            start = pos
+            pos += command.end()
+            notes = []
+            while True:
+                while pos < len(masked) and masked[pos].isspace():
+                    pos += 1
+                group = _balanced_group(masked, pos, "[", "]")
+                if not group:
+                    break
+                notes.append(text[group[0]:group[1]])
+                pos = group[2]
+            group = _balanced_group(masked, pos, "{", "}")
+            if not group:
+                continue
+            for key in re.finditer(r"[^,\s]+", masked[group[0]:group[1]]):
+                key_start = group[0] + key.start()
+                occurrences.append((key.group(0), key_start, key_start + len(key.group(0)), start, group[2],
+                                    notes[-1] if notes else None, notes[0] if len(notes) > 1 else None))
+            pos = group[2]
+    else:
+        # Pandoc's ordinary keys; terminal punctuation is not part of a key.
+        pattern = r"(?<![\w@\\])@([^\W_][\w:.#$%&+?<>~/-]*|_[\w:.#$%&+?<>~/-]+)"
+        for match in re.finditer(pattern, masked):
+            key = match.group(1).rstrip(":.,;!?")
+            if not key:
+                continue
+            start, end = match.start(), match.start(1) + len(key)
+            left = masked.rfind("[", 0, start)
+            right = masked.find("]", end)
+            bracket = left >= 0 and right >= 0 and "\n\n" not in masked[left:right] \
+                and "]" not in masked[left:start] and "[" not in masked[end:right]
+            locator = None
+            if bracket:
+                tail = masked[end:right].split(";", 1)[0]
+                locator = tail.strip().lstrip(",").strip() or None
+                start, end = left, right + 1
+            else:
+                note = re.match(r"[ \t]+\[([^\]\n@]+)\]", masked[end:])
+                if note:
+                    locator = note.group(1).strip()
+                    end += note.end()
+            occurrences.append((key, match.start(1), match.start(1) + len(key), start, end, locator, None))
+    citations = []
+    # Blank-line blocks retain original spaces and line breaks, unlike read_text's normalized paragraphs.
+    blocks = [(m.start(), m.end()) for m in re.finditer(r"\S(?:.*?)(?=\n[ \t]*\n|\Z)", masked, re.S)]
+    previous, intro = [], False
+    for paragraph, (block_start, block_end) in enumerate(blocks):
+        found = []
+        for key, key_start, key_end, start, end, locator, prenote in occurrences:
+            if not block_start <= key_start < block_end:
+                continue
+            found.append({"kind": "key", "citekey": key, "raw": text[start:end],
+                          "authors": [], "years": [], "etal": False, "locator": locator, "prenote": prenote,
+                          "origin": "body", "paragraph": paragraph, "span": [start - block_start, end - block_start],
+                          "location": source_location(text, file, key_start, key_end)})
+        prose = masked[block_start:block_end]
+        attach_quotes(prose, found, previous, intro)
+        # Keys in one command/group support the same quoted passage.
+        for citation in found:
+            shared = next((c["quotes"] for c in found if c["span"] == citation["span"] and c["quotes"]), [])
+            if not citation["quotes"] and shared:
+                citation["quotes"] = [{**q, "locator": citation.get("locator")} for q in shared]
+        citations.extend(found)
+        if found:
+            previous = found
+        intro = prose.rstrip().endswith(":")
+    return citations
+
+
+def crosscheck_keys(citations: list[dict], refs: list[dict], inventory: bool = False) -> tuple[list[dict], list[int]]:
+    by_key, findings, cited = defaultdict(list), [], set()
+    for ref in refs:
+        by_key[ref["citekey"]].append(ref["index"])
+    for citation in citations:
+        indexes = by_key.get(citation["citekey"], [])
+        citation.pop("ref_indexes", None)
+        if len(indexes) == 1:
+            citation["ref_indexes"] = indexes
+            cited.update(indexes)
+        elif not indexes:
+            findings.append(finding("C-UNDEFINED-KEY", "error", citation["citekey"],
+                                    "La clave citada no está definida en las bibliografías explícitas.", None,
+                                    location=citation["location"]))
+        else:
+            cited.update(indexes)
+            citation["ambiguous_ref_indexes"] = indexes
+    uncited = [] if inventory else [r["index"] for r in refs if r["index"] not in cited]
+    for index in uncited:
+        ref = refs[index]
+        findings.append(finding("C-UNUSED-KEY", "warning", ref["citekey"],
+                                "Entrada bibliográfica no citada en el manuscrito.", index, location=ref["location"]))
+    return findings, uncited
 
 
 # --------------------------------------------------------------------------- sections

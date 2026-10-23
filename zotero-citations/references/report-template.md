@@ -11,6 +11,18 @@ Llená cada sección con los JSON de los scripts; no recalcules a mano. Seccione
 - Biblioteca Zotero: <user|group> <ID> · Lectura: <local | web>
 - Manuscrito entregado: <archivo> · Control de cambios: activado · Autor de las revisiones: <--author>
 
+## Vigencia y trazabilidad de evidencia
+- Fecha de comprobación (UTC): <evidence.checked_at>
+- SHA-256 del manuscrito original: <evidence.binding.manuscript_sha256>
+- Bibliografías `.bib`: <archivo y SHA-256 de cada entrada de evidence.binding.bibliographies>
+- SHA-256 de audit.json / match.json: <hashes de bytes registrados por source_check>
+- Cobertura de parseo: <completa | incompleta, con cada advertencia y ubicación; no afirmar auditoría completa si hubo omisiones>
+- Resultados reutilizados: <current / stale y changed_inputs; un juicio stale debe revisarse de nuevo>
+
+| Ocurrencia (id) | Ubicación (archivo, párrafo/span o línea/columna, nota) | itemKey / versión | attachmentKey / versión | SHA-256 texto fuente | SHA-256 contexto | Comprobado UTC | Vigencia |
+|-----------------|------------------------------------------------------|-------------------|-------------------------|----------------------|------------------|----------------|----------|
+(Copiar de `results[].evidence.binding` y `checked_at`; valores ausentes = no disponibles, no inferirlos. Cada juicio queda ligado a esa ocurrencia exacta: no trasladarlo a otra oración ni a otro uso del mismo ítem.)
+
 ## Control de cambios
 - Inserciones I · Eliminaciones D · Cambios de cursiva F · Párrafos insertados / eliminados P / Q · Comentarios C (de `docx_revise.py summary`)
 - Ninguna revisión está aceptada: el autor revisa cada una en Word (Revisar → Aceptar / Rechazar). Rechazar todo devuelve el original.
@@ -74,6 +86,7 @@ Llená cada sección con los JSON de los scripts; no recalcules a mano. Seccione
 | # | Cita | Afirmación | Veredicto | Pasaje de la fuente, página | Sugerencia |
 |---|------|------------|-----------|-----------------------------|------------|
 (Veredicto: fiel / exagerada / parcial / sin respaldo / no verificable. Solo si el usuario pidió verificar fidelidad. Listar aparte las citas `no-fulltext`.)
+(Si se conserva un juicio del agente, agregarlo como `results[].judgement` con veredicto, pasaje y página, sin modificar su binding. `--previous` solo lo recupera con inputs idénticos y versiones conocidas; `previous_judgement` es histórico obsoleto, nunca un veredicto vigente.)
 
 ## Metadatos faltantes / [verificar]
 | # | Referencia | Campo faltante | Acción sugerida |

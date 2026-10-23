@@ -2,17 +2,18 @@
 """Extract, cross-check and lint the citations of a manuscript (stdlib only).
 
 Usage:
-  cite_audit.py extract MANUSCRIPT [--style S]
-  cite_audit.py audit MANUSCRIPT [--style S] [--lang es|en] [--no-lint]
+  cite_audit.py extract MANUSCRIPT [--style S] [--bib REFERENCES.bib ...]
+  cite_audit.py audit MANUSCRIPT [--style S] [--lang es|en] [--no-lint] [--bib REFERENCES.bib ...]
 
 Styles: auto (detect), apa (APA 7), chicago (detect the Chicago variant; notes if
 unclear), chicago-notes, chicago-author-date (CMOS 18). --no-lint keeps the
 citation↔reference cross-check but skips formatting rules: use it when the user
 asked for a custom format (its rules come from the template, not from this script).
 
-Inputs: .docx (body, anchored footnotes/endnotes, live Zotero fields), .md (Pandoc
-footnotes `[^1]`), .txt. Convert PDFs to text first. Output is JSON on stdout;
-every finding carries a rule id.
+Inputs: .docx (anchored notes and live Zotero fields), .pdf, .md/.qmd, .tex,
+.txt and .bib (inventory). --bib is repeatable; manuscript-supplied bibliography
+paths are never followed. Key-mode audits metadata/usage, not rendered style.
+Output is JSON on stdout; every finding carries a rule id.
 """
 from __future__ import annotations
 
@@ -25,11 +26,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import style_apa  # noqa: E402
 from citecore import (  # noqa: E402
-    CHUNK_RE, NOTE_MARK_RE, YEAR_IN, detect_lang, finding, first_title, inherit_dash_authors, read_document, shape_of,
-    split_sections,
+    CHUNK_RE, NOTE_MARK_RE, YEAR_IN, crosscheck_keys, detect_lang, finding, find_key_citations, first_title,
+    inherit_dash_authors, load_bibliographies, read_document, read_source, shape_of, split_sections,
 )
+from evidence import audit_evidence  # noqa: E402
 from style_chicago import PROFILES as CHICAGO  # noqa: E402
-from zotlib import emit, fail  # noqa: E402
+from zotlib import emit, fail, load_json_file  # noqa: E402
 
 PROFILES = {"apa": style_apa, **CHICAGO}
 STYLE_CHOICES = ["auto", "apa", "chicago", *CHICAGO]
@@ -76,38 +78,59 @@ def resolve_style(requested: str, detection: dict) -> tuple[str, str]:
 
 # --------------------------------------------------------------------------- pipeline
 
-def extract(path: Path, style: str = "auto") -> dict:
+def extract(path: Path, style: str = "auto", bibliography_paths=(), previous: dict | None = None) -> dict:
+    path = Path(path)
+    bibliography_paths = tuple(Path(p) for p in bibliography_paths)
+    inventory = path.suffix.lower() == ".bib"
+    key_citations = find_key_citations(read_source(path), str(path)) \
+        if path.suffix.lower() in (".tex", ".md", ".markdown", ".qmd") else []
+    key_mode = inventory or bool(bibliography_paths) or path.suffix.lower() == ".tex" or bool(key_citations)
     doc = read_document(path)
     body, ref_paras, heading = split_sections(doc["paragraphs"])
     detection = detect_style(body, doc["notes"], [r["text"] for r in ref_paras])
     name, how = resolve_style(style, detection)
     profile = PROFILES[name]
-    refs = [{**profile.parse_reference(r["text"]), "section": r["section"], "index": i, "paragraph": r["paragraph"]}
-            for i, r in enumerate(ref_paras)]
-    inherit_dash_authors(refs)
-    citations = profile.citations(body, doc["notes"])
-    synthetic = False
-    if not refs:
-        refs = profile.synthesize_references(citations)
-        synthetic = bool(refs)
-    return {
+    if key_mode:
+        bibliography = load_bibliographies(((path,) if inventory else ()) + bibliography_paths)
+        refs = bibliography["references"]
+        citations = key_citations
+        synthetic = False
+    else:
+        refs = [{**profile.parse_reference(r["text"]), "section": r["section"], "index": i, "paragraph": r["paragraph"]}
+                for i, r in enumerate(ref_paras)]
+        inherit_dash_authors(refs)
+        citations = profile.citations(body, doc["notes"])
+        synthetic = False
+        if not refs:
+            refs = profile.synthesize_references(citations)
+            synthetic = bool(refs)
+    data = {
         "file": str(path), "style": name, "style_label": profile.LABEL, "style_source": how, "style_detection": detection,
         "reference_heading": heading, "references_from_notes": synthetic, "references": refs, "citations": citations,
         "notes_count": len(doc["notes"]), "zotero_fields": doc["zotero_fields"], "body_text": body,
+        **({"citation_mode": "keys", "bibliography_paths": [str(p) for p in
+             (((path,) if inventory else ()) + bibliography_paths)], "bibliography_inventory": inventory,
+            "bibliography_complete": bibliography["complete"], "bibliography_warnings": bibliography["warnings"]}
+           if key_mode else {}),
     }
+    data["evidence"] = audit_evidence(data, path, data.get("bibliography_paths", bibliography_paths), previous)
+    return data
 
 
-def audit(path: Path, lang: str | None, style: str = "auto", lint: bool = True) -> dict:
-    data = extract(path, style)
+def audit(path: Path, lang: str | None, style: str = "auto", lint: bool = True, bibliography_paths=(),
+          previous: dict | None = None) -> dict:
+    data = extract(path, style, bibliography_paths)
     profile = PROFILES[data["style"]]
     lang = lang or detect_lang(" ".join(data["body_text"])[:20000])
     refs, citations = data["references"], data["citations"]
-    cross, uncited = profile.crosscheck(citations, refs)
+    key_mode = data.get("citation_mode") == "keys"
+    cross, uncited = crosscheck_keys(citations, refs, data.get("bibliography_inventory", False)) if key_mode \
+        else profile.crosscheck(citations, refs)
     # Formatting rules of the chosen system; a custom format (--no-lint) only keeps the cross-check.
     format_rules = {"C-IBID", "C-OPCIT", "C-NOTE-INVERTED", "C-TITLE-MARKUP", "C-COMMA-MISSING", "C-COMMA-EXTRA",
                     "C-LOCATOR-FORMAT", "C-AMPERSAND", "C-REPEATED-FULL", "C-ETAL-REQUIRED"}
-    findings = [f for f in cross if lint or f["rule"] not in format_rules]
-    if lint:
+    findings = [f for f in cross if lint or f["rule"] not in format_rules] + data.get("bibliography_warnings", [])
+    if lint and not key_mode:
         findings += profile.lint(refs, lang, any("*" in r["raw"] for r in refs))
     detection = data["style_detection"]
     if data["style_source"] == "requested" and detection["style"] and detection["style"] != data["style"] \
@@ -120,7 +143,7 @@ def audit(path: Path, lang: str | None, style: str = "auto", lint: bool = True) 
                                 "El .docx tiene campos vivos de Zotero: corregir en Zotero y refrescar; no editar el texto de esos campos.", None))
     real = [r for r in refs if not r.get("synthetic")]
     unparsed = sum(1 for r in real if not r["parsed"])
-    if real and unparsed / len(real) > 0.3:
+    if not key_mode and real and unparsed / len(real) > 0.3:
         findings.append(finding("D-MIXED-STYLE", "error", "documento",
                                 f"{unparsed}/{len(real)} entradas no siguen {profile.LABEL}: posible otra norma o norma mixta.", None))
     if data["references_from_notes"]:
@@ -133,17 +156,20 @@ def audit(path: Path, lang: str | None, style: str = "auto", lint: bool = True) 
     summary = {
         "style": data["style"], "style_source": data["style_source"], "language": lang, "lint": lint,
         "references": len(refs), "citations": len(citations),
-        "orphan_citations": sum(f["rule"] == "C-ORPHAN" for f in findings),
+        "orphan_citations": sum(f["rule"] in ("C-ORPHAN", "C-UNDEFINED-KEY") for f in findings),
         "uncited_references": len(uncited),
         "errors": sum(f["severity"] == "error" for f in findings),
         "warnings": sum(f["severity"] == "warning" for f in findings),
         "zotero_field_item_keys": zotero_keys,
+        **({"bibliography_complete": data["bibliography_complete"]} if key_mode else {}),
         "by_rule": dict(Counter(f["rule"] for f in findings)),
     }
     if getattr(profile, "stats", None):
         summary["notes"] = dict(profile.stats)
     data.pop("body_text")
-    return {**data, "summary": summary, "findings": findings}
+    report = {**data, "summary": summary, "findings": findings}
+    report["evidence"] = audit_evidence(report, path, data.get("bibliography_paths", bibliography_paths), previous)
+    return report
 
 
 def main() -> None:
@@ -153,6 +179,9 @@ def main() -> None:
         p = sub.add_parser(name)
         p.add_argument("manuscript")
         p.add_argument("--style", choices=STYLE_CHOICES, default="auto")
+        p.add_argument("--bib", action="append", default=[], metavar="BIBLIOGRAPHY",
+                       help="bibliografía explícita .bib (repetible); no sigue rutas del manuscrito")
+        p.add_argument("--previous", help="auditoría anterior: marca stale si cambió algún input")
         if name == "audit":
             p.add_argument("--lang", choices=["es", "en"], help="manuscript language (default: detect)")
             p.add_argument("--no-lint", action="store_true", help="cross-check only (custom formats)")
@@ -160,12 +189,17 @@ def main() -> None:
     path = Path(args.manuscript)
     if not path.exists():
         fail(f"File not found: {path}")
+    for bibliography in args.bib:
+        if not Path(bibliography).is_file():
+            fail(f"Bibliography not found: {bibliography}")
+    previous = load_json_file(args.previous) if args.previous else None
     if args.command == "extract":
-        data = extract(path, args.style)
+        data = extract(path, args.style, args.bib)
         data.pop("body_text")
+        data["evidence"] = audit_evidence(data, path, data.get("bibliography_paths", args.bib), previous)
         emit(data)
     else:
-        emit(audit(path, args.lang, args.style, lint=not args.no_lint))
+        emit(audit(path, args.lang, args.style, lint=not args.no_lint, bibliography_paths=args.bib, previous=previous))
 
 
 if __name__ == "__main__":

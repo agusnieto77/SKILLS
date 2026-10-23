@@ -36,6 +36,9 @@ from zotlib import (  # noqa: E402
     emit, env, fail, get_json, isbns_in, main_title, normalize_doi, normalize_isbn, request, surname_match,
     title_similarity, year_of,
 )
+from authorship import (  # noqa: E402
+    author_detail, author_details, author_label, compare_authorship, family_from_display, split_truncation,
+)
 
 TIMEOUT = 25
 
@@ -49,6 +52,21 @@ def _record(source: str, **fields) -> dict:
     record = {"source": source, "title": None, "authors": [], "year": None, "container": None, "volume": None,
               "issue": None, "pages": None, "publisher": None, "type": None, "doi": None, "isbn": [], "url": None}
     record.update({k: v for k, v in fields.items() if v not in (None, "", [])})
+    details = author_details(record["authors"], record.get("author_details"))
+    authors, truncated = split_truncation(record["authors"])
+    record["authors"] = authors
+    if truncated:
+        details = details[:len(authors)]
+        if authors:
+            name_field = "literal" if "literal" in details[-1] else "family"
+            details[-1] = {**details[-1], name_field: authors[-1]}
+    record["author_details"] = details
+    complete = bool(authors) and all(author_label(a) for a in details) and not truncated
+    record["authors_complete"] = bool(record.get("authors_complete", True) and complete)
+    warnings = list(record.get("authorship_warnings") or [])
+    if not record["authors_complete"]:
+        warnings.append("La fuente no proporciona una lista completa y utilizable de autores.")
+    record["authorship_warnings"] = list(dict.fromkeys(warnings))
     return record
 
 
@@ -71,8 +89,10 @@ def crossref_doi(doi: str) -> dict | None:
 def _from_crossref(m: dict) -> dict:
     parts = (m.get("published-print") or m.get("published-online") or m.get("issued") or {}).get("date-parts") or [[None]]
     online = ((m.get("published-online") or {}).get("date-parts") or [[None]])[0][0]
+    details = [author_detail(a) for a in (m.get("author") or [])]
     return _record(
-        "crossref", title=(m.get("title") or [None])[0], authors=[a.get("family") or a.get("name") for a in m.get("author", [])],
+        "crossref", title=(m.get("title") or [None])[0], authors=[author_label(a) for a in details],
+        author_details=details,
         year=str(parts[0][0]) if parts[0][0] else None, container=(m.get("container-title") or [None])[0],
         volume=m.get("volume"), issue=m.get("issue"), pages=m.get("page"), publisher=m.get("publisher"),
         type=m.get("type"), doi=normalize_doi(m.get("DOI")), isbn=sorted(isbns_in(" ".join(m.get("ISBN", [])))),
@@ -85,9 +105,16 @@ def datacite_doi(doi: str) -> dict | None:
     if not data:
         return None
     a = data["data"]["attributes"]
+    details = []
+    for creator in (a.get("creators") or []):
+        if creator.get("nameType") == "Organizational":
+            details.append({"literal": creator.get("name") or ""})
+        else:
+            family = creator.get("familyName") or _family(creator.get("name"))
+            details.append(author_detail({"family": family, "given": creator.get("givenName")}))
     return _record(
         "datacite", title=(a.get("titles") or [{}])[0].get("title"),
-        authors=[c.get("familyName") or c.get("name") for c in a.get("creators", [])],
+        authors=[author_label(c) for c in details], author_details=details,
         year=str(a.get("publicationYear")) if a.get("publicationYear") else None, publisher=_publisher(a.get("publisher")),
         type=(a.get("types") or {}).get("resourceTypeGeneral"), doi=normalize_doi(a.get("doi")), url=a.get("url"),
     )
@@ -108,8 +135,10 @@ def csl_negotiation(doi: str, agency: str) -> dict | None:
     except ValueError:
         return None
     issued = ((m.get("issued") or {}).get("date-parts") or [[None]])[0][0]
+    details = [author_detail(a) for a in (m.get("author") or [])]
     return _record(
-        f"doi-negotiation ({agency})", title=m.get("title"), authors=[a.get("family") or a.get("literal") for a in m.get("author", [])],
+        f"doi-negotiation ({agency})", title=m.get("title"),
+        authors=[author_label(a) for a in details], author_details=details,
         year=str(issued) if issued else None, container=m.get("container-title"), volume=m.get("volume"),
         issue=m.get("issue"), pages=m.get("page"), publisher=m.get("publisher"), type=m.get("type"),
         doi=normalize_doi(m.get("DOI")),
@@ -127,10 +156,25 @@ def _from_openalex(w: dict) -> dict:
     biblio = w.get("biblio") or {}
     pages = "-".join(p for p in (biblio.get("first_page"), biblio.get("last_page")) if p) or None
     source = ((w.get("primary_location") or {}).get("source") or {})
+    authorships = w.get("authorships") or []
+    names = [(a.get("author") or {}).get("display_name") or a.get("raw_author_name") for a in authorships]
+    details, warnings = [], []
+    for name in names:
+        # OpenAlex exposes display names, not reliable structured family/literal fields.
+        if name and re.search(r"\b(consortium|collaboration|group|committee|investigators|network|team)\b", name, re.I):
+            details.append({"literal": name})
+            warnings.append("OpenAlex: autor colectivo inferido del nombre; comprobarlo en una fuente estructurada.")
+        else:
+            details.append(author_detail({"family": _family(name)}))
+    count = w.get("authors_count")
+    complete = not w.get("is_authors_truncated") and (count is None or count == len(authorships))
+    if warnings:
+        complete = False
+    pmid = ((w.get("ids") or {}).get("pmid") or "").rstrip("/").rsplit("/", 1)[-1] or None
     return _record(
         "openalex", title=w.get("title"),
-        authors=[_family((a.get("author") or {}).get("display_name")) for a in w.get("authorships", [])],
-        full_names=[(a.get("author") or {}).get("display_name") for a in w.get("authorships", [])],
+        authors=[author_label(a) for a in details], author_details=details,
+        full_names=names, authors_complete=complete, authorship_warnings=warnings, pmid=pmid,
         year=str(w.get("publication_year")) if w.get("publication_year") else None, container=source.get("display_name"),
         volume=biblio.get("volume"), issue=biblio.get("issue"), pages=pages, type=w.get("type"),
         doi=normalize_doi(w.get("doi")), url=w.get("id"), is_retracted=w.get("is_retracted"),
@@ -174,10 +218,7 @@ def googlebooks_isbn(isbn: str) -> dict | None:
 
 
 def _family(display: str | None) -> str | None:
-    """Family name from 'Given Family' or 'Family, Given' display strings."""
-    if not display:
-        return None
-    return display.split(",")[0].strip() if "," in display else display.split()[-1]
+    return family_from_display(display)
 
 
 def citoid(identifier: str) -> list[dict] | None:
@@ -206,18 +247,97 @@ def citoid_isbn(isbn: str) -> dict | None:
 
 
 def pubmed(pmid: str) -> dict | None:
-    data = get_json("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi", timeout=TIMEOUT,
-                    params={"db": "pubmed", "id": pmid, "retmode": "json"})
-    entry = ((data or {}).get("result") or {}).get(str(pmid))
-    if not entry or entry.get("error"):
-        return None
-    doi = next((i["value"] for i in entry.get("articleids", []) if i.get("idtype") == "doi"), None)
-    return _record(
-        "pubmed", title=(entry.get("title") or "").rstrip("."), authors=[a["name"].rsplit(" ", 1)[0] for a in entry.get("authors", [])],
+    """Keep esummary metadata; only efetch establishes complete PubMed authorship."""
+    warnings, entry = [], None
+    try:
+        data = get_json("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi", timeout=TIMEOUT,
+                        params={"db": "pubmed", "id": pmid, "retmode": "json"})
+        entry = ((data or {}).get("result") or {}).get(str(pmid))
+        if entry and entry.get("error"):
+            warnings.append(f"PubMed esummary: {entry['error']}")
+            entry = None
+    except (ConnectionError, ValueError) as err:
+        warnings.append(f"PubMed esummary no disponible: {err}")
+    entry = entry or {}
+    details = []
+    for author in entry.get("authors", []):
+        name = author.get("name") or ""
+        if author.get("authtype") == "CollectiveName":
+            details.append({"literal": name})
+        else:
+            details.append({"family": re.sub(r"\s+[A-Z]+$", "", name)})
+    doi = next((i.get("value") for i in entry.get("articleids", []) if i.get("idtype") == "doi"), None)
+    record = _record(
+        "pubmed", title=(entry.get("title") or "").rstrip("."),
+        authors=[author_label(a) for a in details], author_details=details, authors_complete=False,
         year=year_of(entry.get("pubdate")), container=entry.get("fulljournalname") or entry.get("source"),
         volume=entry.get("volume"), issue=entry.get("issue"), pages=entry.get("pages"), type="journal-article",
-        doi=normalize_doi(doi),
+        doi=normalize_doi(doi), pmid=str(pmid),
     )
+    try:
+        response = request("GET", "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", timeout=TIMEOUT,
+                           params={"db": "pubmed", "id": pmid, "retmode": "xml"})
+        if response.status != 200:
+            raise ValueError(f"HTTP {response.status}")
+        if b"<!ENTITY" in response.body.upper():
+            raise ValueError("declaración de entidad XML no admitida")
+        root = ET.fromstring(response.body)
+        error = next((node for node in root.iter() if node.tag.lower() == "error"), None)
+        if error is not None:
+            raise ValueError(" ".join(error.itertext()) or "error XML")
+        citation = next((node for node in root.iter() if node.tag in {"PubmedArticle", "PubmedBookArticle"}
+                         and (node.findtext("MedlineCitation/PMID") or node.findtext("BookDocument/PMID")) == str(pmid)), None)
+        if citation is None:
+            raise ValueError("la respuesta no contiene el PMID solicitado")
+        article = citation.find("MedlineCitation/Article")
+        if article is None:
+            article = citation.find("BookDocument")
+        if article is None:
+            raise ValueError("registro sin artículo")
+        author_list = article.find("AuthorList")
+        if author_list is None or not author_list.findall("Author"):
+            raise ValueError("registro sin lista de autores")
+        complete = author_list.get("CompleteYN", "Y") == "Y"
+        details = []
+        for author in author_list.findall("Author"):
+            collective = author.find("CollectiveName")
+            if collective is not None:
+                details.append({"literal": "".join(collective.itertext()).strip()})
+            else:
+                details.append(author_detail({"family": author.findtext("LastName"),
+                                              "given": author.findtext("ForeName") or author.findtext("Initials")}))
+            if author.get("ValidYN", "Y") != "Y" or not author_label(details[-1]):
+                complete = False
+        record["authors"] = [author_label(a) for a in details]
+        record["author_details"] = details
+        record["authors_complete"] = complete
+        if not complete:
+            warnings.append("PubMed efetch declara una autoría parcial o contiene autores sin identificar.")
+
+        def text(path):
+            node = article.find(path)
+            return " ".join("".join(node.itertext()).split()) if node is not None else None
+
+        fields = {"title": text("ArticleTitle"), "year": year_of(text("Journal/JournalIssue/PubDate/Year")
+                  or text("Journal/JournalIssue/PubDate/MedlineDate") or text("PubDate/Year")),
+                  "container": text("Journal/Title") or text("Book/BookTitle"),
+                  "volume": text("Journal/JournalIssue/Volume"), "issue": text("Journal/JournalIssue/Issue"),
+                  "pages": text("Pagination/MedlinePgn"),
+                  "doi": normalize_doi(next((n.text for n in citation.iter("ArticleId")
+                                              if n.get("IdType") == "doi"), None))}
+        for key, value in fields.items():
+            if not record.get(key) and value:
+                record[key] = value
+    except (ConnectionError, ValueError, ET.ParseError) as err:
+        warnings.append(f"PubMed efetch no disponible; autoría de esummary no completa: {err}")
+    if not record.get("authors_complete"):
+        warnings.append("No se pudo comprobar la autoría completa en PubMed; se conserva la información disponible.")
+    record["authorship_warnings"] = list(dict.fromkeys(warnings))
+    if not record.get("title") and not record["authors"]:
+        if warnings:
+            raise ConnectionError("; ".join(warnings))
+        return None
+    return record
 
 # --------------------------------------------------------------------------- works without identifier
 
@@ -453,7 +573,7 @@ def _score(candidate: dict, title: str, author: str | None, year: str | None) ->
 
 
 def validate_work(title: str, author: str | None, year: str | None, url: str | None = None,
-                  only: list[str] | None = None) -> dict:
+                  only: list[str] | None = None, *, expected: dict | None = None) -> dict:
     """Works without DOI/ISBN: query catalogs and repositories, keep the best match per independence group."""
     sources = work_sources()
     if only:
@@ -486,7 +606,7 @@ def validate_work(title: str, author: str | None, year: str | None, url: str | N
         best.setdefault(independence_group(c["source"]), c)
     chosen = sorted(best.values(), key=lambda c: -c["score"])
     leads = sorted((c for c in candidates if c not in chosen and c["score"] >= 0.5), key=lambda c: -c["score"])[:5]
-    expected = {"title": title, "author": author, "year": year}
+    expected = expected if expected is not None else {"title": title, "author": author, "year": year}
     return {"searched": sorted(jobs), "groups": {independence_group(c["source"]): c["source"] for c in chosen},
             **verdict(chosen, expected, errors), "leads": leads,
             "note": "Each group counts once (LA Referencia + institutional repositories = one). Report the record URLs."}
@@ -501,9 +621,13 @@ def agree(a: dict, b: dict) -> dict:
     years = {a.get("year"), b.get("year"), a.get("online_year"), b.get("online_year")} - {None}
     year_ok = a.get("year") == b.get("year") or bool(
         a.get("year") and b.get("year") and ({a["year"], a.get("online_year")} & {b["year"], b.get("online_year")}))
-    ok = title >= 0.9 and (author is None or author >= 0.7) and year_ok
+    authorship = compare_authorship(a["authors"], b["authors"],
+                                   left_details=a.get("author_details"), right_details=b.get("author_details"),
+                                   left_complete=a.get("authors_complete", bool(a["authors"])),
+                                   right_complete=b.get("authors_complete", bool(b["authors"])))
+    ok = title >= 0.9 and (author is None or author >= 0.7) and year_ok and authorship["agree"]
     return {"sources": [a["source"], b["source"]], "agree": ok, "title_similarity": round(title, 3),
-            "first_author": author, "years": sorted(years)}
+            "first_author": author, "years": sorted(years), "authorship": authorship}
 
 
 def compare_expected(consensus: dict, expected: dict) -> list[dict]:
@@ -512,7 +636,15 @@ def compare_expected(consensus: dict, expected: dict) -> list[dict]:
         sim = title_similarity(expected["title"], consensus["title"])
         if sim < 0.9:
             diffs.append({"field": "title", "manuscript": expected["title"], "sources": consensus["title"], "similarity": round(sim, 3)})
-    if expected.get("author") and consensus["authors"]:
+    if expected.get("authors") is not None:
+        authorship = compare_authorship(expected["authors"], consensus["authors"],
+                                       left_details=expected.get("author_details"),
+                                       right_details=consensus.get("author_details"),
+                                       right_complete=consensus.get("authors_complete", bool(consensus["authors"])),
+                                       truncated=bool(expected.get("etal") or expected.get("authors_truncated")),
+                                       corporate=bool(expected.get("corporate")))
+        diffs.extend(authorship["diffs"])
+    elif expected.get("author") and consensus["authors"]:
         if surname_match(expected["author"], consensus["authors"][0]) < 0.7:
             diffs.append({"field": "first_author", "manuscript": expected["author"], "sources": consensus["authors"][0]})
     if expected.get("year") and consensus.get("year"):
@@ -524,18 +656,35 @@ def compare_expected(consensus: dict, expected: dict) -> list[dict]:
 
 def verdict(records: list[dict], expected: dict, errors: list[str]) -> dict:
     found = [r for r in records if r]
-    result = {"records": found, "unavailable": errors}
+    complete = [r for r in found if r.get("authors_complete", bool(r["authors"]))]
+    warnings = [f"{r['source']}: {warning}" for r in found for warning in r.get("authorship_warnings", [])]
+    for record in found:
+        if record not in complete and not record.get("authorship_warnings"):
+            warnings.append(f"{record['source']}: autoría incompleta; no valida la lista completa.")
+    full_manuscript = bool(expected.get("authors"))
+    truncated = bool(expected.get("etal") or expected.get("authors_truncated")
+                     or split_truncation(expected.get("authors") or [])[1])
+    result = {"records": found, "unavailable": errors, "warnings": list(dict.fromkeys(warnings)),
+              "authorship": {"validated": False, "complete_sources": [r["source"] for r in complete],
+                             "incomplete_sources": [r["source"] for r in found if r not in complete],
+                             "manuscript_scope": ("truncated" if truncated else "complete") if full_manuscript
+                             else "first-author-only" if expected.get("author") else "not-provided"}}
     if not found:
         return {"verdict": "not-found", **result}
     result["integrity"] = integrity_of(found)
     pairs = [agree(a, b) for i, a in enumerate(found) for b in found[i + 1:]]
     result["agreement"] = pairs
-    consensus = found[0]
+    consensus = (complete or sorted(found, key=lambda r: -len(r["authors"])))[0]
     result["diffs_vs_manuscript"] = compare_expected(consensus, expected)
     if len(found) == 1:
         return {"verdict": "single-source", **result}
     if not all(p["agree"] for p in pairs):
         return {"verdict": "conflict", **result}
+    if len(complete) < 2:
+        return {"verdict": "single-source", **result}
+    author_fields = {"authors", "first_author", "author_count", "author_truncation"}
+    result["authorship"]["validated"] = full_manuscript and not any(
+        d["field"] in author_fields for d in result["diffs_vs_manuscript"])
     return {"verdict": "mismatch" if result["diffs_vs_manuscript"] else "validated", **result}
 
 
@@ -657,7 +806,9 @@ def validate_doi(raw: str, expected: dict) -> dict:
     errors: list[str] = []
     agency = _call(registration_agency, doi, errors=errors)
     if agency is None and not errors:
-        return {"doi": doi, "verdict": "not-found", "note": "doi.org reports the DOI does not exist (typo or invented DOI)."}
+        records = [_call(pubmed, str(expected["pmid"]), errors=errors)] if expected.get("pmid") else []
+        return {"doi": doi, **verdict(records, expected, errors), "verdict": "not-found",
+                "note": "doi.org reports the DOI does not exist (typo or invented DOI)."}
     records = []
     if agency == "Crossref":
         records.append(_call(crossref_doi, doi, errors=errors))
@@ -666,6 +817,9 @@ def validate_doi(raw: str, expected: dict) -> dict:
     else:
         records.append(_call(csl_negotiation, doi, agency or "unknown", errors=errors))
     records.append(_call(openalex_doi, doi, errors=errors))
+    pmid = expected.get("pmid") or next((r.get("pmid") for r in records if r and r.get("pmid")), None)
+    if pmid:
+        records.append(_call(pubmed, str(pmid), errors=errors))
     return {"doi": doi, "registration_agency": agency, **verdict(records, expected, errors)}
 
 
@@ -718,17 +872,61 @@ def payload(identifier: str) -> dict:
             "note": "Citoid data is a draft: reconcile with the validated records (dates, title case) before `create`."}
 
 
+def _authorship_arguments(parser) -> None:
+    parser.add_argument("--author", action="append", help="Apellido; repetir para una lista completa y ordenada.")
+    parser.add_argument("--authors", help='Lista JSON ordenada: ["Apellido", {"literal": "Consorcio"}].')
+    parser.add_argument("--etal", action="store_true", help="La lista del manuscrito es un prefijo truncado con et al.")
+
+
+def _expected_arguments(args) -> dict:
+    repeated = args.author or []
+    if args.authors is not None and repeated:
+        fail("Usa --authors o --author, no ambos.")
+    authors = None
+    if args.authors is not None:
+        try:
+            authors = json.loads(args.authors)
+        except ValueError:
+            fail("--authors debe ser una lista JSON de autores.")
+        if not isinstance(authors, list) or not authors:
+            fail("--authors debe ser una lista JSON no vacía.")
+        for value in authors:
+            if not isinstance(value, (str, dict)):
+                fail("Cada autor debe ser un apellido o un objeto con family/literal.")
+            if isinstance(value, dict):
+                for field in ("family", "literal", "given", "non-dropping-particle"):
+                    if field in value and not isinstance(value[field], str):
+                        fail(f"El campo de autor {field} debe ser texto.")
+            if not author_label(author_detail(value)):
+                fail("Cada autor debe tener un apellido o literal no vacío.")
+    elif len(repeated) > 1 or args.etal or split_truncation(repeated)[1]:
+        authors = repeated
+    if args.etal and not authors:
+        fail("--etal requiere autores explícitos.")
+    result = {"title": args.title, "author": repeated[0] if authors is None and repeated else None, "year": args.year}
+    if authors is not None:
+        result["authors"] = authors
+        result["etal"] = args.etal
+    if getattr(args, "pmid", None):
+        result["pmid"] = args.pmid
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("doi", "isbn", "pmid"):
         p = sub.add_parser(name)
         p.add_argument("identifier")
-        p.add_argument("--title"), p.add_argument("--author"), p.add_argument("--year")
+        p.add_argument("--title"), p.add_argument("--year")
+        _authorship_arguments(p)
+        if name == "doi":
+            p.add_argument("--pmid", help="PMID de la misma obra: consultar también PubMed efetch.")
     p = sub.add_parser("search")
     p.add_argument("--title", required=True), p.add_argument("--author"), p.add_argument("--year")
     p = sub.add_parser("work", help="works without DOI/ISBN: catalogs, repositories, record page")
-    p.add_argument("--title", required=True), p.add_argument("--author"), p.add_argument("--year")
+    p.add_argument("--title", required=True), p.add_argument("--year")
+    _authorship_arguments(p)
     p.add_argument("--url", help="landing page of the record (journal, repository, catalog), read via Citoid")
     p.add_argument("--sources", help="comma-separated subset, e.g. loc,bne,lareferencia,repos,conicet")
     p = sub.add_parser("payload")
@@ -742,7 +940,9 @@ def main() -> None:
         return
     if args.command == "work":
         only = [s.strip() for s in args.sources.split(",") if s.strip()] if args.sources else None
-        emit(validate_work(args.title, args.author, args.year, args.url, only))
+        expected = _expected_arguments(args)
+        first = expected.get("author") or author_label(author_detail((expected.get("authors") or [""])[0]))
+        emit(validate_work(args.title, first or None, args.year, args.url, only, expected=expected))
         return
     if args.command == "payload":
         emit(payload(args.identifier))
@@ -762,7 +962,7 @@ def main() -> None:
             return
         emit(integrity(dois))
         return
-    expected = {"title": args.title, "author": args.author, "year": args.year}
+    expected = _expected_arguments(args)
     handler = {"doi": validate_doi, "isbn": validate_isbn, "pmid": validate_pmid}[args.command]
     emit(handler(args.identifier, expected))
 

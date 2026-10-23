@@ -3,10 +3,10 @@
 Skill para agentes compatibles con el formato Agent Skills (OpenCode, Pi, Oh My Pi, Gentle Shell, Claude Code, Codex y otros) que audita y normaliza las citas de un manuscrito académico usando Zotero como fuente de verdad.
 
 - **Normas**: APA 7 y Chicago 18.ª (notas y bibliografía, o autor-fecha) por defecto; cualquier estilo del repositorio de Zotero (10 800+); o un formato a medida reconstruido a partir de un ejemplo del usuario.
-- **Auditoría**: citas huérfanas y no citadas, "et al.", años, sufijos a/b, ibid., notas completas y abreviadas, reglas de formato de cada norma.
+- **Auditoría**: citas huérfanas y no citadas, "et al.", años, sufijos a/b, ibid., notas completas y abreviadas, reglas de formato de cada norma; claves LaTeX/Pandoc con bibliografías BibTeX/BibLaTeX y diagnósticos de parseo.
 - **Zotero**: coteja la lista con la biblioteca, crea y corrige ítems con dry-run y control de versiones.
-- **Validación**: Crossref, DataCite, OpenAlex, Open Library, Library of Congress, Biblioteca Nacional de España, LA Referencia y repositorios institucionales (CONICET, UBA, UNNE, UNC, UNR, UNQ), fichas de SciELO u otros sitios vía Citoid, PubMed; catálogo manual para BNMM, BCN, Redalyc y otros; retractaciones (Retraction Watch vía Crossref, OpenAlex).
-- **Fidelidad**: verifica citas textuales, páginas y copia sin comillas contra el texto completo que Zotero indexó de los PDF.
+- **Validación**: Crossref, DataCite, OpenAlex, Open Library, Library of Congress, Biblioteca Nacional de España, LA Referencia y repositorios institucionales (CONICET, UBA, UNNE, UNC, UNR, UNQ), fichas de SciELO u otros sitios vía Citoid, PubMed; catálogo manual para BNMM, BCN, Redalyc y otros; retractaciones (Retraction Watch vía Crossref, OpenAlex). Cotejo de autoría ordenada, incluidos coautores, consorcios y truncaciones declaradas.
+- **Fidelidad**: verifica citas textuales, páginas y copia sin comillas contra el texto completo que Zotero indexó de los PDF. Evidencia por ocurrencia con SHA-256 y versiones; los juicios obsoletos quedan `stale`.
 - **Control de cambios**: el manuscrito corregido se entrega como copia del `.docx` con cada corrección como revisión de Word y las dudas como comentarios; el autor acepta o rechaza.
 
 El agente lee `SKILL.md`; este README es para quien instala y mantiene la skill.
@@ -45,6 +45,28 @@ python scripts/source_check.py check audit.json match.json > check.json
 python scripts/cite_format.py render --keys KEY1,KEY2 --style chicago-notes --locators KEY1:61
 python scripts/docx_revise.py apply manuscrito.docx edits.json --out manuscrito_revisado.docx --author "Nombre"
 ```
+
+LaTeX, Markdown/Pandoc y Quarto con claves (sin modificar los originales):
+
+```bash
+python scripts/cite_audit.py audit manuscrito.tex --bib referencias.bib --bib otras.bib --no-lint > audit.json
+python scripts/cite_audit.py audit manuscrito.qmd --bib referencias.bib --previous audit_anterior.json > audit_nuevo.json
+python scripts/source_check.py check audit_nuevo.json match.json --previous check_anterior.json > check_nuevo.json
+```
+
+`--bib` es explícito y repetible: no se ejecuta TeX ni se siguen rutas o comandos incluidos en metadatos. Una clave indefinida o repetida es un error; las entradas no usadas generan advertencias. Los diagnósticos de parseo incompleto impiden declarar cobertura completa. Las claves son sensibles a mayúsculas y no se convierten en claves Zotero ni en rutas.
+
+Autoría completa (listas ordenadas de apellidos o autores estructurados; `--author` también se puede repetir):
+
+```bash
+python scripts/validate_ref.py doi 10.1234/ejemplo --authors '["de la Fuente", "Gomez", {"literal": "Consorcio Salud"}]' --year 2024
+python scripts/validate_ref.py pmid 12345678 --authors '["Perez"]' --etal
+python scripts/validate_ref.py doi 10.1234/ejemplo --pmid 12345678 --author Perez --author Gomez
+```
+
+`--etal` permite un prefijo declarado de la autoría, no sustituciones ni cambios de orden. PubMed recupera `AuthorList` con `efetch`; las fuentes parciales se advierten. Un único `--author` mantiene el control de primer autor.
+
+Para reutilizar juicios de fidelidad, conservarlos en `results[].judgement` junto con el binding original. `--previous` los reutiliza solo en la misma ocurrencia con hashes y versiones idénticos y conocidos; de lo contrario marca `stale` y deja el juicio anterior como histórico. Sin texto completo, el resultado sigue siendo `no verificable`, no `sin respaldo`.
 
 Formato de una revista o de un ejemplo:
 

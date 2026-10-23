@@ -35,6 +35,7 @@ from zotlib import (  # noqa: E402
     item_doi, library_prefix, load_json_file, main_title, mask, normalize_doi, normalize_isbn,
     now_iso, request, surname_match, title_similarity, year_match, year_of,
 )
+from authorship import author_detail, compare_authorship  # noqa: E402
 
 API_HEADERS = {"Zotero-API-Version": "3"}
 BATCH = 50
@@ -42,7 +43,7 @@ SCHEMA_TTL = 7 * 24 * 3600
 PERIODICAL_TYPES = {"journalArticle", "magazineArticle", "newspaperArticle"}
 STRUCTURAL_KEYS = {"itemType", "creators", "tags", "collections", "relations", "parentItem", "deleted", "inPublications"}
 SECONDARY_CREATORS = {"editor", "seriesEditor", "translator", "contributor", "bookAuthor", "reviewedAuthor", "recipient"}
-SNAPSHOT_FORMAT = 2  # bump when summarize() changes so cached snapshots are rebuilt
+SNAPSHOT_FORMAT = 3  # bump when summarize() changes so cached snapshots are rebuilt
 
 
 # --------------------------------------------------------------------------- transport
@@ -200,15 +201,16 @@ def check_items(items: list[dict], *, for_create: bool = True) -> list[dict]:
 
 def summarize(item: dict) -> dict:
     data = item.get("data", item)
+    # Primary creators only: a chapter's editors or a translator are not its authors.
+    creators = ([c for c in data.get("creators", []) if c.get("creatorType") not in SECONDARY_CREATORS]
+                or data.get("creators", []))
     return {
         "key": data.get("key") or item.get("key"),
         "version": data.get("version") or item.get("version"),
         "itemType": data.get("itemType"),
         "title": data.get("title") or data.get("caseName") or data.get("nameOfAct"),
-        # Primary creators only: a chapter's editors or a translator are not its authors.
-        "creators": [c.get("lastName") or c.get("name") for c in
-                     ([c for c in data.get("creators", []) if c.get("creatorType") not in SECONDARY_CREATORS]
-                      or data.get("creators", []))],
+        "creators": [c.get("lastName") or c.get("name") for c in creators],
+        "creator_details": [author_detail(c) for c in creators],
         "date": data.get("date"),
         "DOI": item_doi(data),
         "ISBN": sorted(isbns_in(data.get("ISBN"))),
@@ -276,10 +278,19 @@ def diff_fields(ref: dict, item: dict) -> list[dict]:
     if year_of(ref.get("year")) != year_of(item["date"]):
         diffs.append({"field": "year", "manuscript": ref.get("year"), "zotero": item["date"]})
     ref_authors, z_authors = ref.get("authors") or [], item["creators"]
-    if ref_authors and z_authors and surname_match(ref_authors[0], z_authors[0]) < 1:
-        diffs.append({"field": "first_author", "manuscript": ref_authors[0], "zotero": z_authors[0]})
-    if ref_authors and len(ref_authors) != len(z_authors) and not ref.get("corporate"):
-        diffs.append({"field": "author_count", "manuscript": len(ref_authors), "zotero": len(z_authors)})
+    if ref_authors or ref.get("etal") or ref.get("authors_truncated"):
+        authorship = compare_authorship(
+            ref_authors, z_authors, left_details=ref.get("author_details"),
+            right_details=item.get("creator_details"), corporate=bool(ref.get("corporate")),
+            truncated=bool(ref.get("etal") or ref.get("authors_truncated")),
+        )
+        for difference in authorship["diffs"]:
+            difference["zotero"] = difference.pop("sources")
+            if "sources_kind" in difference:
+                difference["zotero_kind"] = difference.pop("sources_kind")
+            diffs.append(difference)
+        if ref_authors and not z_authors:
+            diffs.append({"field": "author_count", "manuscript": len(ref_authors), "zotero": 0, "severity": "warning"})
     if ref.get("doi") and item["DOI"] and ref["doi"] != item["DOI"]:
         diffs.append({"field": "DOI", "manuscript": ref["doi"], "zotero": item["DOI"]})
     if ref.get("doi") and not item["DOI"]:

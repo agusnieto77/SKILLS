@@ -26,6 +26,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from evidence import bound_evidence, file_sha256, json_sha256, occurrence, text_sha256  # noqa: E402
 from zotlib import emit, fail, fold, load_json_file, request  # noqa: E402
 
 USABLE_MATCH = {"exact-doi", "exact-isbn", "strong", "strong-diff"}
@@ -382,8 +383,11 @@ class ZoteroText:
         item = self._get(f"/items/{item_key}")
         if not item:
             return None, {"status": "item-not-found"}
+        item_data = item.get("data", item)
+        item_info = {"itemKey": item_key, "item_version": item.get("version", item_data.get("version"))}
         children = self._get(f"/items/{item_key}/children") or []
-        attachments = [c["data"] for c in children if c["data"].get("itemType") == "attachment"
+        attachments = [{**c["data"], "version": c.get("version", c["data"].get("version"))}
+                       for c in children if c["data"].get("itemType") == "attachment"
                        and c["data"].get("contentType") in TEXT_TYPES]
         best = None
         for att in attachments:
@@ -392,9 +396,11 @@ class ZoteroText:
                 best = (att, data)
         if not best:
             status = "no-attachment" if not attachments else "not-indexed"
-            return None, {"status": status, "attachments": [a["key"] for a in attachments]}
+            return None, {"status": status, **item_info, "attachments": [a["key"] for a in attachments]}
         att, data = best
-        info = {"status": "ok", "attachment": att["key"], "chars": len(data["content"]),
+        info = {"status": "ok", **item_info, "attachment": att["key"], "attachmentKey": att["key"],
+                "attachment_version": att.get("version"), "source_text_sha256": text_sha256(data["content"]),
+                "chars": len(data["content"]),
                 "indexedPages": data.get("indexedPages"), "totalPages": data.get("totalPages")}
         if data.get("indexedPages") and data.get("totalPages") and data["indexedPages"] < data["totalPages"]:
             info["partial_index"] = True
@@ -407,7 +413,8 @@ class ZoteroText:
 
 # --------------------------------------------------------------------------- commands
 
-def check(audit: dict, matches: dict, provider, k: int, passages: bool) -> dict:
+def check(audit: dict, matches: dict, provider, k: int, passages: bool, *, previous: dict | None = None,
+          input_hashes: dict | None = None) -> dict:
     from citecore import detect_lang
 
     key_of = {m["index"]: m["best"]["key"] for m in matches.get("matches", [])
@@ -456,10 +463,60 @@ def check(audit: dict, matches: dict, provider, k: int, passages: bool) -> dict:
             out["cross_language"] = bool(manuscript_lang and source_lang != manuscript_lang)
             out["needs_judgement"] = True
         results.append(out)
-    return {"source": provider.name, "summary": dict(counts), "results": results,
+    evidence = bind_results(results, audit, matches, cache, k, passages, previous, input_hashes)
+    return {"source": provider.name, "summary": dict(counts), "results": results, "evidence": evidence,
             "verdicts": "For each `needs_judgement` result decide: fiel | exagerada | parcial | sin respaldo, quoting the "
                         "passage. No full text = no verificable (never 'sin respaldo'). With cross_language, rerun "
                         "`passages` with the claim translated to the source language."}
+
+
+def bind_results(results: list[dict], audit: dict, matches: dict, sources: dict, k: int, passages: bool,
+                 previous: dict | None, input_hashes: dict | None) -> dict:
+    """Reuse only a bound judgement for the exact occurrence and unchanged inputs."""
+    manuscript = audit.get("evidence", {}).get("binding", {})
+    inputs = {"audit_sha256": json_sha256(audit), "match_sha256": json_sha256(matches),
+              "manuscript_sha256": manuscript.get("manuscript_sha256"), **(input_hashes or {})}
+    manuscript_path = Path(audit["file"]) if audit.get("file") else None
+    manuscript_changed = False
+    if manuscript_path and manuscript_path.is_file():
+        observed = file_sha256(manuscript_path)
+        manuscript_changed = observed != inputs["manuscript_sha256"]
+        inputs["manuscript_sha256"] = observed
+    matched = {m["index"]: m["best"] for m in matches.get("matches", []) if m.get("best")}
+    prior = {r.get("evidence", {}).get("binding", {}).get("occurrence", {}).get("id"): r
+             for r in (previous or {}).get("results", [])}
+    for index, (out, citation) in enumerate(zip(results, audit.get("citations", []), strict=True)):
+        here = occurrence(citation, index, audit.get("file"))
+        source, info = sources.get(out.get("itemKey"), (None, {}))
+        best = matched.get((citation.get("ref_indexes") or [None])[0], {})
+        binding = {**inputs, "occurrence": here, "itemKey": out.get("itemKey"),
+                   "attachmentKey": info.get("attachmentKey", info.get("attachment")),
+                   "item_version": info.get("item_version", best.get("version")),
+                   "matched_item_version": best.get("version"), "attachment_version": info.get("attachment_version"),
+                   "source_text_sha256": text_sha256(source.content) if source else None,
+                   "source_metadata_sha256": json_sha256({"info": info, "annotations": source.annotations if source else [],
+                                                         "page_offset": source.page_offset if source else None}),
+                   "options": {"k": k, "passages": passages}}
+        old = prior.get(here["id"])
+        old_evidence = old.get("evidence", {}) if old else ({} if previous is not None else None)
+        row_evidence = bound_evidence(binding, old_evidence)
+        reusable = all(binding.get(key) is not None for key in
+                       ("manuscript_sha256", "itemKey", "attachmentKey", "item_version", "attachment_version", "source_text_sha256"))
+        if manuscript_changed or (previous is not None and not reusable):
+            row_evidence["status"] = "stale"
+            row_evidence["changed_inputs"].append("manuscript_since_audit" if manuscript_changed else "unbound_inputs")
+        row_evidence["reusable"] = reusable and not manuscript_changed
+        out["evidence"] = row_evidence
+        if old and "judgement" in old:
+            if row_evidence["status"] == "current" and row_evidence["reusable"]:
+                out["judgement"] = old["judgement"]
+            else:
+                out["previous_judgement"] = old["judgement"]
+    binding = {**inputs, "occurrences_sha256": json_sha256([r["evidence"]["binding"] for r in results])}
+    overall = bound_evidence(binding, previous.get("evidence", {}) if previous is not None else None)
+    if manuscript_changed or any(r["evidence"]["status"] == "stale" for r in results):
+        overall["status"] = "stale"
+    return overall
 
 
 def main() -> None:
@@ -470,6 +527,7 @@ def main() -> None:
     p.add_argument("audit_json"), p.add_argument("match_json")
     p.add_argument("-k", type=int, default=3, help="passages per citation")
     p.add_argument("--no-passages", action="store_true", help="only quotes and verbatim copying")
+    p.add_argument("--previous", help="previous fidelity JSON; reuse only unchanged, occurrence-bound judgements")
     p = sub.add_parser("quote")
     p.add_argument("item_key"), p.add_argument("--text", required=True), p.add_argument("--locator")
     p = sub.add_parser("passages")
@@ -477,15 +535,24 @@ def main() -> None:
     args = parser.parse_args()
     provider = ZoteroText(args.source)
     if args.command == "check":
-        emit(check(load_json_file(args.audit_json), load_json_file(args.match_json), provider, args.k, not args.no_passages))
+        emit(check(load_json_file(args.audit_json), load_json_file(args.match_json), provider, args.k, not args.no_passages,
+                   previous=load_json_file(args.previous) if args.previous else None,
+                   input_hashes={"audit_sha256": file_sha256(args.audit_json), "match_sha256": file_sha256(args.match_json)}))
         return
     source, info = provider.load(args.item_key)
     if source is None:
         fail(f"No indexed full text for {args.item_key}: {info['status']}")
+    evidence = bound_evidence({"itemKey": args.item_key, "item_version": info.get("item_version"),
+                               "attachmentKey": info.get("attachmentKey", info.get("attachment")),
+                               "attachment_version": info.get("attachment_version"),
+                               "source_text_sha256": text_sha256(source.content),
+                               "request_sha256": json_sha256({"command": args.command, "text": getattr(args, "text", None),
+                                                             "locator": getattr(args, "locator", None),
+                                                             "query": getattr(args, "query", None), "k": getattr(args, "k", None)})})
     if args.command == "quote":
-        emit({"fulltext": info, **check_quote(source, args.text, args.locator)})
+        emit({"fulltext": info, "evidence": evidence, **check_quote(source, args.text, args.locator)})
     else:
-        emit({"fulltext": info, "passages": rank_passages(source, args.query, args.k)})
+        emit({"fulltext": info, "evidence": evidence, "passages": rank_passages(source, args.query, args.k)})
 
 
 if __name__ == "__main__":

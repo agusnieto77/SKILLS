@@ -53,8 +53,8 @@ En Windows, si la consola se abrió antes de un `setx`, los scripts leen igual l
 
 | Comando | Qué hace |
 |---|---|
-| `extract MANUSCRITO [--style S]` | Norma detectada, citas (en el cuerpo, en notas al pie y finales) y entradas de la lista, campos vivos de Zotero. |
-| `audit MANUSCRITO [--style S] [--lang es\|en] [--no-lint]` | `extract` + cruce cita↔referencia + reglas de la norma. `--no-lint` solo cruza (formatos a medida). |
+| `extract MANUSCRITO [--style S] [--bib ARCHIVO ...] [--previous JSON]` | Norma detectada, citas (cuerpo, notas o claves), entradas de la lista/BibTeX, campos vivos Zotero y evidencia de entrada. |
+| `audit MANUSCRITO [--style S] [--lang es\|en] [--no-lint] [--bib ARCHIVO ...] [--previous JSON]` | `extract` + cruce cita↔referencia + reglas de la norma. `--no-lint` solo cruza (formatos a medida); no oculta errores de claves ni parseo. |
 
 `--style`: `auto` (default), `apa`, `chicago` (elige la variante; si no hay señales, notas), `chicago-notes`, `chicago-author-date`.
 
@@ -70,6 +70,24 @@ En Windows, si la consola se abrió antes de un `setx`, los scripts leen igual l
 
 - **Cita textual en línea**: entre `“…”`, `«…»` o `"…"`, de 4 o más palabras; se asigna a la cita o llamada de nota más cercana de la misma oración (primero la de después).
 - **Cita en bloque**: párrafo de 40+ palabras sin comillas con marca explícita (`> `, estilo de cita de Word, o párrafo anterior terminado en `:`) y localizador al final o en su nota.
+
+
+### BibTeX/BibLaTeX y citas por clave
+
+Usar `--bib referencias.bib` para cada bibliografía (opción repetible); una entrada `.bib` como manuscrito permite inventariar la biblioteca. Los archivos originales no se modifican. No se ejecuta LaTeX ni se abren bibliografías o archivos mencionados en metadatos: las rutas deben ser argumentos explícitos.
+
+- `.tex`: `\cite`, `\parencite`, `\textcite`, `\autocite`, `\citep`, `\citet`, con varias claves y notas opcionales `[prenota][posnota]`.
+- `.md`/`.markdown`/`.qmd`: citas Pandoc `[@clave]`, grupos como `[@uno; @dos]` y citas narrativas `@clave`. Los bloques de código, comentarios y direcciones de correo no son citas.
+- El parser reconoce llaves anidadas, comillas y escapes; conserva `citekey`, texto original y `location` de la entrada y de cada uso. Las claves se resuelven exactamente, con distinción de mayúsculas; no se inventan citekeys Better BibTeX ni itemKeys.
+- Una clave indefinida o duplicada es un error; una entrada sin uso es una advertencia. Los problemas de parseo llevan ubicación y advertencia; revisar `bibliography_complete` (también en `summary`) y `bibliography_warnings` antes de afirmar cobertura completa. Las construcciones no resueltas deben verificarse, no omitirse silenciosamente.
+- Los índices `ref_indexes` siguen vinculando cada uso a sus referencias para `match` y `source_check`; `--no-lint` no convierte la entrada BibTeX en una bibliografía formateada.
+- `@string` y concatenación `#` se resuelven dentro de cada archivo; `crossref`/`xdata` se vinculan entre las bibliografías explícitas. Las macros desconocidas/cíclicas, las herencias ausentes/cíclicas y las entradas malformadas producen advertencias de cobertura incompleta, conservando el texto para revisión.
+
+### Evidencia y resultados anteriores
+
+`evidence.binding` registra el SHA-256 de los **bytes originales** del manuscrito y de cada `.bib`, además del hash canónico de la auditoría; `checked_at` usa UTC. Cada cita conserva `occurrence.id`, su ubicación exacta y un hash de su contexto/cita/localizador. Los campos Zotero todavía desconocidos en la ingesta son `null`, nunca estimados.
+
+`--previous auditoria_anterior.json` compara los bindings: cualquier cambio de manuscrito, bibliografía o contenido de auditoría marca `evidence.status: stale` y enumera `changed_inputs`. No reutilizar una conclusión por coincidir solamente autor, año, citekey o itemKey.
 
 ### Findings
 
@@ -94,6 +112,9 @@ Comunes y APA (detalle de Chicago en `chicago.md`):
 | `D-LIVE-ZOTERO-FIELDS` | info | `.docx` con campos vivos de Zotero. |
 | `D-MIXED-STYLE` / `D-NO-REFERENCES` | error | >30 % de entradas fuera de la norma / sin lista (info en Chicago notas). |
 | `D-REFERENCES-FROM-NOTES` | info | Sin bibliografía: referencias armadas desde notas completas. |
+| `C-UNDEFINED-KEY` / `B-DUPLICATE-KEY` | error | Clave usada sin definición / clave bibliográfica repetida y ambigua. |
+| `C-UNUSED-KEY` | warning | Entrada `.bib` sin uso en el manuscrito (no se aplica al inventario `.bib` directo). |
+| `B-PARSE` / `B-UNRESOLVED-MACRO` / `B-INHERITANCE` | warning | Sintaxis incompleta, macro no resuelta o herencia bibliográfica inválida; `bibliography_complete: false`. |
 
 ## `zotero_client.py`
 
@@ -156,9 +177,9 @@ Correcciones sobre Zotero en perfiles oficiales: rayas en rangos fuera de URL/DO
 
 | Comando | Fuentes |
 |---|---|
-| `doi DOI [--title --author --year]` | Agencia por `doi.org/ra` → Crossref, DataCite o negociación de contenido (mEDRA, etc.) + OpenAlex. DOI inexistente → `not-found`. |
+| `doi DOI [--title --author --authors --year] [--etal] [--pmid PMID]` | Agencia por `doi.org/ra` → Crossref, DataCite o negociación CSL + OpenAlex; PubMed si se conoce PMID. DOI inexistente → `not-found`. |
 | `isbn ISBN [...]` | Checksum + Open Library + catálogo de bibliotecas vía Citoid (LoC/WorldCat) + Google Books. |
-| `pmid PMID [...]` | PubMed + Crossref (si PubMed trae DOI). |
+| `pmid PMID [...]` | PubMed (`esummary` + autoría ordenada mediante `efetch`) + Crossref (si PubMed trae DOI). |
 | `search --title T [--author A] [--year Y]` | Candidatos de Crossref y OpenAlex con `score`. Solo pistas. |
 | `work --title T [--author A] [--year Y] [--url URL] [--sources S1,S2]` | Obras sin DOI/ISBN: Open Library, Library of Congress, BNE, LA Referencia, repositorios DSpace (CONICET, UBA, UNNE, UNC, UNR, UNQ), Crossref, OpenAlex y la ficha de `--url` (Citoid), en paralelo. Mejor candidato por grupo independiente (repositorios + LA Referencia = un grupo) → mismos veredictos. Salida extra: `searched`, `groups`, `leads`. Detalle: `validation-sources.md`. |
 | `payload ID` | JSON Zotero vía Citoid (sin `key`/`version`/tags de catálogo) + `check`. Es un borrador: reconciliá fechas y sentence case con los registros validados. |
@@ -168,13 +189,22 @@ Correcciones sobre Zotero en perfiles oficiales: rayas en rangos fuera de URL/DO
 
 | Veredicto | Significado | Acción |
 |---|---|---|
-| `validated` | 2+ fuentes independientes coinciden (título ≥ 0,9, primer autor, año; se tolera año online vs impreso) y el manuscrito coincide. | Se puede crear. |
-| `single-source` | Respondió una sola fuente (o un solo grupo independiente). | Buscar una segunda (`work`, catálogo manual de `validation-sources.md`, ficha vía `work --url`) y mostrarla. |
+| `validated` | 2+ fuentes independientes coinciden (título ≥ 0,9, autoría ordenada disponible, año; se tolera año online vs impreso) y el manuscrito coincide dentro del alcance declarado. | Se puede crear; revisar `authorship.manuscript_scope` y no afirmar autoría completa si solo se proporcionó el primer autor. |
+| `single-source` | Respondió una sola fuente/grupo independiente, o no hay dos listas completas de autores para validar esa dimensión. | Buscar una segunda fuente completa (`work`, catálogo manual, ficha vía `work --url`) y mostrarla. |
 | `mismatch` | Las fuentes coinciden entre sí, el manuscrito difiere. | Mostrar `diffs_vs_manuscript`; corregir el manuscrito o preguntar. |
 | `conflict` | Las fuentes no coinciden entre sí. | No crear; revisión manual. |
 | `not-found` | DOI inexistente, ISBN con checksum inválido o sin resultados. | Marcar `[verificar]`. |
 
 `unavailable` lista las fuentes que fallaron (red, cuota) para que el reporte no las cuente como validación.
+
+### Autoría completa
+
+`--authors` acepta un JSON ordenado con apellidos o autores estructurados (`{"family":"de la Fuente","given":"Ana"}` / `{"literal":"Consorcio Salud"}`). También se puede repetir `--author Apellido`; un único `--author` conserva la consulta histórica del primer autor. `--etal` declara una lista truncada: solo permite omitir el sufijo de una lista compatible, nunca cambiar autores ni posiciones.
+
+El cotejo compara apellidos, orden, número y tipo persona/consorcio. Los conflictos de coautores son `error`, aunque el primero y la cantidad coincidan; una truncación declarada compatible no es un error. Las listas parciales o de completitud desconocida llevan `authorship_warnings`/advertencias: no equivalen a autoría completa validada. `diff_fields` en `match` aplica el mismo criterio y conserva las diferencias por campo para revisión.
+
+`authorship` informa `validated`, `complete_sources`, `incomplete_sources` y `manuscript_scope` (`complete`, `truncated`, `first-author-only`, `not-provided`). Los registros conservan `authors`, `author_details`, `authors_complete` y `authorship_warnings`. PubMed `esummary` + `efetch` cuenta como una fuente; el PMID de `OpenAlex.ids.pmid` también permite recuperar autoría cuando está disponible.
+
 
 ### Integridad
 
@@ -219,11 +249,18 @@ Coteja cada cita con el texto completo que Zotero indexó del PDF, EPUB o HTML a
 
 | Comando | Qué hace |
 |---|---|
-| `check audit.json match.json [-k 3] [--no-passages]` | Todas las citas resueltas: citas textuales, copia sin comillas y pasajes candidatos. |
+| `check audit.json match.json [-k 3] [--no-passages] [--previous check_anterior.json]` | Citas resueltas: citas textuales, copia y pasajes. Reutiliza únicamente juicios ligados a inputs idénticos. |
 | `quote KEY --text "..." [--locator "p. 61"]` | Verifica una cita textual. |
 | `passages KEY --query "..." [-k 5]` | Pasajes más relevantes (BM25) para una afirmación; útil para reformular la consulta en el idioma de la fuente. |
 
 Estado por cita: `checked`, `no-fulltext` (sin adjunto o sin indexar: en Zotero, *Reindexar ítem*), `no-zotero-item` (match débil o ausente) o `unresolved-citation` (cita huérfana o ambigua).
+
+Cada resultado incluye `evidence.binding`: hashes SHA-256 de manuscrito, auditoría, match y texto fuente indexado (UTF-8 exacto), `itemKey`, `attachmentKey`, versiones de ítem/adjunto, opciones de comprobación y ubicación/hash de la ocurrencia. La CLI registra los hashes de los bytes de `audit.json` y `match.json`; la API Python, hashes de JSON canónico. También se vinculan los metadatos de páginas/anotaciones que afectan la comprobación. `quote` y `passages` registran identidad, versiones y hash de texto fuente y consulta.
+
+Para conservar un juicio humano/del agente, guardarlo como `results[].judgement` con veredicto, pasaje y página, manteniendo `evidence`. En una nueva comprobación, `--previous` solo copia `judgement` si corresponde a la misma ocurrencia, todos los inputs son idénticos y las identidades/versiones están disponibles. Cualquier cambio marca `stale` y expone el juicio como `previous_judgement`, nunca como juicio vigente. Un informe antiguo sin binding no se puede reutilizar; una cita movida no hereda la conclusión de otra oración. Los controles deterministas se calculan de nuevo, incluso cuando se proporciona `--previous`.
+
+Si el manuscrito sigue accesible en la ruta registrada, se compara su hash actual con el auditado: un cambio posterior a `audit` invalida la vigencia. Si solo se dispone de los JSON, el hash del manuscrito es el declarado por la auditoría; debe preservarse el archivo original para comprobar su vigencia externamente. Para aprobar de nuevo un juicio obsoleto, ejecutar una comprobación nueva sin `--previous` y revisar su pasaje antes de añadir `judgement`.
+
 
 ### Citas textuales
 

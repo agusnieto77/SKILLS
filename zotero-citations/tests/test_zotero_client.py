@@ -263,6 +263,49 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(self.match(title="Un título que no existe en la biblioteca", authors=["Lobato"], year="2001")["status"], "none")
 
 
+class OrderedAuthorDiffTests(unittest.TestCase):
+    def item(self, authors, **extra):
+        return {**library_item("AUTH0001", "A study", authors, "2024"), **extra}
+
+    def reference(self, authors, **extra):
+        return {"title": "A study", "year": "2024", "authors": authors, **extra}
+
+    def test_invented_second_author_is_reported_with_same_first_and_count(self):
+        diffs = zc.diff_fields(self.reference(["Messeri", "Inventado"]),
+                               self.item(["Messeri", "Crockett"]))
+        self.assertEqual([(d["field"], d["position"]) for d in diffs], [("authors", 2)])
+
+    def test_reordered_coauthors_are_reported_at_each_position(self):
+        diffs = zc.diff_fields(self.reference(["Messeri", "Quirós", "Crockett"]),
+                               self.item(["Messeri", "Crockett", "Quirós"]))
+        self.assertEqual([d["position"] for d in diffs], [2, 3])
+
+    def test_particle_and_diacritic_variants_are_not_substitutions(self):
+        self.assertEqual(zc.diff_fields(self.reference(["de la Cruz", "Quirós", "van Beethoven"]),
+                                        self.item(["Cruz", "Quiros", "Beethoven"])), [])
+
+    def test_etal_allows_only_matching_prefix_and_rejects_extra_declaration(self):
+        item = self.item(["Messeri", "Crockett", "Quirós"])
+        self.assertEqual(zc.diff_fields(self.reference(["Messeri", "Crockett"], etal=True), item), [])
+        self.assertTrue(zc.diff_fields(self.reference(["Messeri", "Inventado"], etal=True), item))
+        self.assertTrue(zc.diff_fields(self.reference(["Messeri", "Crockett", "Quirós"], etal=True), item))
+
+    def test_corporate_author_is_not_a_person(self):
+        item = self.item(["Atlas"], creator_details=[{"literal": "Atlas"}])
+        self.assertEqual(zc.diff_fields(self.reference(["Atlas"], corporate=True), item), [])
+        self.assertTrue(zc.diff_fields(self.reference(["Atlas"]), item))
+
+    def test_summarize_preserves_consortium_metadata_and_primary_order(self):
+        result = zc.summarize({"title": "A study", "creators": [
+            {"creatorType": "author", "firstName": "Ana", "lastName": "de la Cruz"},
+            {"creatorType": "editor", "lastName": "Editor"},
+            {"creatorType": "author", "name": "Atlas Consortium"}]})
+        self.assertEqual(result["creators"], ["de la Cruz", "Atlas Consortium"])
+        self.assertEqual(result["creator_details"], [{"family": "de la Cruz", "given": "Ana"},
+                                                     {"literal": "Atlas Consortium"}])
+        self.assertGreater(zc.SNAPSHOT_FORMAT, 2)
+
+
 class SnapshotSyncTests(WriteBase):
     def test_incremental_refresh_applies_changes_and_deletions(self):
         def entry(key, title, version):

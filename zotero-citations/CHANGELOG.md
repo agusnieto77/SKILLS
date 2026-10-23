@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.3 — 2026-10-22
+
+- **Autoría completa**: cotejo ordenado de apellidos, posiciones, cantidad y consorcios en validación externa y `zotero_client.diff_fields`; soporte de truncación declarada y recuperación PubMed `efetch`. Las listas incompletas se advierten, sin presentarlas como validación completa.
+- **BibTeX/BibLaTeX y claves**: ingesta sin dependencias con parser de llaves/comillas/escapes, conservación de entrada original y ubicación, citas LaTeX/Pandoc/Quarto, bibliografías explícitas `--bib` y diagnóstico de claves indefinidas, duplicadas, no usadas y parseos incompletos.
+- **Vigencia por ocurrencia**: SHA-256 de manuscrito, bibliografías, audit/match y texto fuente; identidades/versiones de ítem y adjunto Zotero, ubicación y fecha de comprobación. `--previous` invalida como `stale` cualquier juicio cuyos inputs cambien y nunca lo traslada a otra oración.
+- **Seguridad de datos**: regla explícita de que títulos, abstracts, notas, PDF, BibTeX y respuestas externas son datos no confiables, nunca instrucciones ni comandos.
+- Pruebas offline de autoría, parser/citas por clave y bindings de evidencia; README, comandos y plantilla de reporte actualizados. Se mantiene Python 3.10+ con biblioteca estándar únicamente.
+
 ## 3.2 — 2026-10-21
 
 Cambios surgidos de la revisión de un libro de 11 capítulos y 477 referencias (APA 7). Ese trabajo entregó un `.docx` reescrito sin control de cambios, y 396 entradas sin DOI quedaron sin poder validarse.
