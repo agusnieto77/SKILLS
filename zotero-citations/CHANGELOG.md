@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.3 — 2026-10-22
+
+- **PubMed**: la finalización del registro distingue metadatos vacíos sin advertencias (`None`) de fallos diagnosticados; las excepciones siempre llevan una razón no vacía. Se mantienen los fallos reales de transporte y cuota.
+- **Autoría**: acceso defensivo a nombres estructurados al retirar `et al.`, explicación del marcador embebido frente al elemento separado y tabla de etiquetas de aviso centralizada.
+- Pruebas offline del contrato de registro vacío, razón de error, marcadores embebidos con detalles estructurados, detalles sin apellido y mensajes de truncación para cada etiqueta y su alternativa genérica.
+
 ## 3.3.2 — 2026-10-22
 
 - **PubMed**: la ausencia de un PMID solo se confirma cuando `esummary` y `efetch` devuelven respuestas válidas y negativas. Un timeout, una cuota excedida o una respuesta `esummary` inutilizable se conserva como fuente no disponible aunque `efetch` devuelva un conjunto vacío.

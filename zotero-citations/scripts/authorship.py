@@ -6,6 +6,7 @@ import re
 from zotlib import PARTICLES, fold, surname_key
 
 _ETAL = re.compile(r"(?:\s*[,;]?\s*)\bet\s+al\.?\s*$", re.IGNORECASE)
+RIGHT_LABEL_TARGETS = {"sources": "La fuente", "zotero": "Zotero", "source_b": "La segunda fuente"}
 
 
 def family_from_display(value: str | None) -> str | None:
@@ -84,9 +85,11 @@ def _visible_authors(values: list, details: list | None, *, corporate: bool = Fa
     structured = author_details(values, details, corporate=corporate)
     visible, marker = split_truncation(values)
     structured = structured[:len(visible)]
+    # Igual longitud: el marcador está embebido en el último nombre; una entrada
+    # «et al.» separada ya se eliminó junto con sus detalles estructurados.
     if marker and visible and len(visible) == len(values):
         name_field = "literal" if "literal" in structured[-1] else "family"
-        structured[-1] = {**structured[-1], name_field: _ETAL.sub("", structured[-1][name_field]).strip()}
+        structured[-1] = {**structured[-1], name_field: _ETAL.sub("", structured[-1].get(name_field, "")).strip()}
     return visible, structured, marker
 
 
@@ -112,8 +115,7 @@ def compare_authorship(left: list, right: list, *, left_details: list | None = N
             diffs.append({"field": "author_truncation", left_label: len(left), right_label: len(right),
                           "severity": "error"})
         elif not right_complete:
-            target = {"sources": "La fuente", "zotero": "Zotero", "source_b": "La segunda fuente"}.get(
-                right_label, f"La lista «{right_label}»")
+            target = RIGHT_LABEL_TARGETS.get(right_label, f"La lista «{right_label}»")
             warnings.append(f"{target} no permite comprobar la truncación declarada de la autoría.")
     # Una lista completa puede refutar autores extra visibles en la otra,
     # aunque esa otra lista sea incompleta; no basta comparar mínimos comunes.

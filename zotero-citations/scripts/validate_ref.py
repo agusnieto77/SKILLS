@@ -247,6 +247,18 @@ def citoid_isbn(isbn: str) -> dict | None:
     )
 
 
+def _pubmed_result(record: dict, warnings: list[str]) -> dict | None:
+    """Distinguish missing metadata from a diagnosed source failure."""
+    if not record.get("title") and not record["authors"]:
+        if warnings:
+            raise ConnectionError("; ".join(warnings) or "PubMed no devolvió metadatos utilizables.")
+        return None
+    if not record.get("authors_complete"):
+        warnings.append("No se pudo comprobar la autoría completa en PubMed; se conserva la información disponible.")
+    record["authorship_warnings"] = list(dict.fromkeys(warnings))
+    return record
+
+
 def pubmed(pmid: str) -> dict | None:
     """Keep esummary metadata; only efetch establishes complete PubMed authorship."""
     warnings, entry = [], None
@@ -341,12 +353,7 @@ def pubmed(pmid: str) -> dict | None:
                 record[key] = value
     except (ConnectionError, ValueError, ET.ParseError) as err:
         warnings.append(f"PubMed efetch no disponible; autoría de esummary no completa: {err}")
-    if not record.get("authors_complete"):
-        warnings.append("No se pudo comprobar la autoría completa en PubMed; se conserva la información disponible.")
-    record["authorship_warnings"] = list(dict.fromkeys(warnings))
-    if not record.get("title") and not record["authors"]:
-        raise ConnectionError("; ".join(warnings))
-    return record
+    return _pubmed_result(record, warnings)
 
 # --------------------------------------------------------------------------- works without identifier
 

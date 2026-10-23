@@ -322,6 +322,43 @@ class OrderedAuthorship(unittest.TestCase):
         self.assertEqual(result["diffs"], [])
         self.assertEqual(details[0], {"family": "de la Cruz", "given": "Ana"})
 
+    def test_inline_etal_keeps_clean_structured_names_and_removes_embedded_marker(self):
+        from authorship import _visible_authors
+
+        for detail, expected in [
+                ({"family": "de la Cruz", "given": "Ana"}, {"family": "de la Cruz", "given": "Ana"}),
+                ({"family": "de la Cruz et al.", "given": "Ana"}, {"family": "de la Cruz", "given": "Ana"}),
+                ({"literal": "Atlas et al."}, {"literal": "Atlas"})]:
+            with self.subTest(detail=detail):
+                names = ["Atlas et al."] if "literal" in detail else ["de la Cruz, Ana et al."]
+                visible, structured, marker = _visible_authors(names, [detail])
+                self.assertEqual(visible, ["Atlas"] if "literal" in detail else ["de la Cruz, Ana"])
+                self.assertTrue(marker)
+                self.assertEqual(structured, [expected])
+
+    def test_inline_etal_with_missing_structured_name_stays_unidentified(self):
+        from authorship import _visible_authors, compare_authorship
+
+        for detail in ({}, {"given": "Ana"}):
+            with self.subTest(detail=detail):
+                visible, structured, marker = _visible_authors(["Cruz et al."], [detail])
+                self.assertEqual(visible, ["Cruz"])
+                self.assertTrue(marker)
+                self.assertEqual(structured, [{"family": ""}])
+                result = compare_authorship(["Cruz et al."], ["Cruz", "Smith"], left_details=[detail])
+                self.assertFalse(result["agree"])
+
+    def test_truncation_warning_identifies_right_label(self):
+        from authorship import compare_authorship
+
+        for label, target in (("sources", "La fuente"), ("zotero", "Zotero"),
+                              ("source_b", "La segunda fuente"), ("catalog", "La lista «catalog»")):
+            with self.subTest(label=label):
+                result = compare_authorship(["Cruz"], ["Cruz"], truncated=True,
+                                            right_complete=False, right_label=label)
+                self.assertIn(f"{target} no permite comprobar la truncación declarada de la autoría.", result["warnings"])
+
+
     def test_declared_etal_accepts_only_a_proper_ordered_prefix(self):
         source = rec("crossref", authors=["Messeri", "Crockett", "Quirós"])
         self.assertEqual(vr.compare_expected(source, {"authors": ["Messeri", "Crockett"], "etal": True}), [])
@@ -414,6 +451,22 @@ class PubMedAuthorship(unittest.TestCase):
             self.assertEqual(result["verdict"], "not-found")
             self.assertEqual(result["unavailable"], [])
             self.assertEqual(result["records"], [])
+
+    def test_valid_empty_pubmed_responses_return_none_without_unavailable(self):
+        with mock.patch.object(vr, "get_json", return_value={"result": {"uids": []}}), \
+                mock.patch.object(vr, "request", return_value=FakeResponse("<PubmedArticleSet/>")):
+            self.assertIsNone(vr.pubmed("999"))
+            result = vr.validate_pmid("999", {})
+        self.assertEqual(result["unavailable"], [])
+
+    def test_empty_pubmed_record_without_warnings_returns_none(self):
+        record = vr._record("pubmed", pmid="999", authors_complete=False)
+        self.assertIsNone(vr._pubmed_result(record, []))
+
+    def test_empty_pubmed_record_error_always_has_a_reason(self):
+        record = vr._record("pubmed", pmid="999", authors_complete=False)
+        with self.assertRaisesRegex(ConnectionError, r"\S"):
+            vr._pubmed_result(record, [""])
 
     def test_no_metadata_and_failed_efetch_remains_unavailable(self):
         with mock.patch.object(vr, "get_json", side_effect=ConnectionError("summary timeout")), \
