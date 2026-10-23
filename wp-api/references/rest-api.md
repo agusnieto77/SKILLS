@@ -32,6 +32,14 @@ Usar un constructor de URL y parámetros, no concatenar `?` sobre otra query ni 
 
 Los permisos efectivos dependen del usuario, objeto, autoría, estado y plugins. Un `Allow: POST` o una ruta `DELETE` no es autorización. Consultar [autenticación](autenticacion.md) ante necesidad real.
 
+Que un dato exista en wp-admin o en la base de datos no implica que esté expuesto por REST:
+
+- Los tipos personalizados (CPT) y las taxonomías necesitan `show_in_rest`; descubrir su `rest_namespace`/`rest_base` en lugar de deducir la ruta.
+- Los metadatos necesitan registro y exposición REST mediante `register_meta` o su variante por subtipo (`register_post_meta`), con `show_in_rest`. Para meta de entradas, el tipo también debe admitir `custom-fields`.
+- Meta de tipo `array` necesita un esquema de sus elementos (`items`); meta de tipo `object`, un esquema de sus propiedades. Consultar el esquema publicado, no inferir la estructura a partir del panel.
+
+Autenticar no revela automáticamente todos los campos ni todos los metadatos: siguen aplicando registro, contexto y permisos. Si falta exposición, informar el límite y remitir al administrador/desarrollador del sitio; esta skill consumidora **no modifica PHP ni configuración del servidor**.
+
 ## 3. Recursos habituales
 
 Rutas relativas a la raíz, **solo tras comprobar disponibilidad**:
@@ -53,6 +61,11 @@ Para archivos usar `source_url`, no reconstruir desde `guid.rendered`. Los archi
 
 - Muestra inicial: `per_page=5`; tope core habitual 100, respetar esquema si difiere.
 - `_fields=id,title,link` para listados; añadir solo lo necesario. Para archivos: `source_url,mime_type,media_details.filesize,date,slug`.
+- `_fields=id,title,meta.mi_clave` selecciona una clave anidada del meta ya expuesto; no crea campos ni concede acceso. Comprobar su presencia y tipo en el esquema.
+- `_embed=author,wp:term` solicita solo esas relaciones. Revisar en `_links` cuáles tienen `embeddable: true`; no seguir todos los enlaces ni asumir que toda relación tendrá datos embebidos.
+- Al combinar ambos, incluir `_links,_embedded`: por ejemplo, `_embed=author,wp:term&_fields=id,title,meta.mi_clave,_links,_embedded`. Sin esos campos, la selección puede excluir los enlaces o el resultado del embedding.
+- `content.rendered` es HTML procesado por WordPress y filtros de plugins (por ejemplo, índices automáticos); **no es la fuente editable**. Para editar o exportar la fuente, usar un cliente autenticado autorizado con `context=edit&_fields=id,content.raw,modified_gmt`. El CLI público incluido **no puede obtener `content.raw`**: no autentica y `--campos` no cambia permisos ni contexto.
+- Conservar los comentarios y delimitadores Gutenberg de `content.raw` (incluidos atributos y bloques anidados). No reconstruir el documento editable desde `content.rendered`; si no se obtiene la fuente autorizada, informar el límite y no sustituirla silenciosamente por HTML renderizado.
 - `search`, `slug`, `include`, `after`, `before`, `orderby` según intención y esquema.
 - Leer `X-WP-Total` y `X-WP-TotalPages`; detener al alcanzar el máximo pedido. Si faltan cabeceras, usar páginas acotadas y señalar total desconocido.
 - Deduplicar por sitio + ID. Paginación sobre un sitio cambiante no es una captura atómica; registrar fecha y límites, no prometer exhaustividad.
@@ -71,6 +84,7 @@ Para archivos usar `source_url`, no reconstruir desde `guid.rendered`. Los archi
 | 429 | Respetar `Retry-After`, pausar; máximo dos reintentos de lectura |
 | Timeout/502/503/504 | Reintentar lectura hasta dos veces con espera 1 y 2 s, salvo Retry-After mayor; si exige espera prolongada informar y detener |
 | TLS/DNS/conexión | Informar causa observada; no declarar que WordPress no existe |
+| Campo/meta ausente o vacío | Revisar `_fields`, contexto y esquema; distinguir ausencia de exposición de falta de valor. Verificar `show_in_rest`, registro de meta, soporte `custom-fields` y esquema `items`/propiedades con el administrador; autenticar no garantiza visibilidad. No cambiar PHP/configuración |
 
 ## 6. Herramientas y ejemplo público
 
@@ -93,3 +107,8 @@ No fijar cantidades actuales a partir de evidencia histórica. Para la ejecució
 - [Tipos](https://developer.wordpress.org/rest-api/reference/post-types/)
 - [Paginación](https://developer.wordpress.org/rest-api/using-the-rest-api/pagination/)
 - [Medios](https://developer.wordpress.org/rest-api/reference/media/)
+- [Parámetros globales: selección y embedding](https://developer.wordpress.org/rest-api/using-the-rest-api/global-parameters/)
+- [Entradas: contextos y contenido](https://developer.wordpress.org/rest-api/reference/posts/)
+- [Formato serializado de bloques](https://developer.wordpress.org/block-editor/getting-started/fundamentals/markup-representation-block/)
+- [Tipos de contenido personalizados en REST](https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-rest-api-support-for-custom-content-types/)
+- [Metadatos y esquemas de arrays/objetos](https://developer.wordpress.org/rest-api/extending-the-rest-api/modifying-responses/#using-register_meta)

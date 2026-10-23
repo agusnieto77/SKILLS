@@ -36,6 +36,14 @@ Desde la raíz del repositorio, anteponer `wp-api/` a las rutas. El agente resue
 
 Consultar `--help` de cada comando para otras opciones como `--per-page`, `--sleep` o `--umbral`. No inferir opciones de un comando a otro. El agente debe comprobar robots y alcance antes de descargar; el CLI no reemplaza ese juicio ni todos los controles de seguridad del agente.
 
+Para seleccionar relaciones y meta anidado ya expuesto, ambos CLI admiten las opciones existentes:
+
+```sh
+python assets/wp_api.py export --site https://ejemplo.com --recurso posts --max 5 --filtro "_embed=author,wp:term" --campos "id,title,meta.mi_clave,_links,_embedded" --out datos
+```
+
+En R, reemplazar el prefijo por `Rscript assets/wp_api.R`. Conservar `_links,_embedded` al combinar `_embed` y `_fields`; comprobar relaciones embebibles y esquema. No se agregaron flags ni autenticación: el CLI público **no puede obtener `content.raw`**. Para editar/exportar fuente con bloques Gutenberg se necesita un cliente autenticado autorizado; campos/meta invisibles pueden requerir exposición por el administrador, no más credenciales. Ver [consultas y diagnóstico](references/rest-api.md) y [descarga](references/descarga.md).
+
 Formatos cubiertos por el registro de la skill (validación por bytes mágicos y familia): documentos (pdf, doc/docx, xls/xlsx, ppt/pptx, odt/ods/odp, rtf, txt, ics), datos (json, csv, tsv, xml), imágenes (jpg, png, gif, webp, avif, heic, bmp, tiff, ico, svg, psd), audio (mp3, m4a, ogg, wav, flac, aac, mka, mid...), video (mp4, mov, avi, wmv, mkv, webm, flv, mpeg, 3gp...), comprimidos (zip, gz, tar, rar, 7z) y otros (swf, exe, binarios). Cada archivo cae en `datos/<familia>/<AAAA>/<MM>/` y las exportaciones en `datos/json/`.
 
 ## Ejercicio público acotado

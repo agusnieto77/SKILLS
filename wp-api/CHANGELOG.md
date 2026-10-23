@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1 — 2026-10-22
+
+- Distinción entre `content.raw` y `content.rendered`, preservación de bloques Gutenberg y límite explícito del CLI público para obtener fuente editable.
+- Guía de `_embed` selectivo y `_fields` anidados con `--filtro`/`--campos` existentes, sin ampliar la superficie CLI; pruebas offline de transporte en Python y R.
+- Diagnóstico de campos/meta invisibles: exposición REST, registro, soporte `custom-fields` y esquemas de arrays/objetos, sin modificar PHP ni configuración.
+- Precisión de la acción `wp_rest` para nonces de autenticación por cookies y enlaces al Handbook oficial.
+
 ## 3.0 — 2026-10-22
 
 Generalización de PDF a todos los formatos de la API REST de WordPress.

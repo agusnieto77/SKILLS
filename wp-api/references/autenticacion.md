@@ -7,7 +7,7 @@ No autenticar una consulta pública por comodidad. Pedir intervención solo ante
 1. Examinar `authentication` del índice si es accesible. Buscar `application-passwords` y su enlace de autorización; no suponer soporte solo por versión estimada.
 2. Preferir Application Passwords de WordPress 5.6+ sobre HTTPS para clientes externos. Están sujetas a HTTPS, configuración y políticas del sitio.
 3. Si no se anuncian o el índice está protegido, preguntar si el usuario puede acceder a su perfil; ausencia del anuncio no demuestra imposibilidad. No activar plugins ni cambiar configuración de seguridad automáticamente.
-4. Cookies + `X-WP-Nonce` solo dentro de una sesión WordPress autorizada y adecuada; cookie sola puede tratarse como anónimo. No exportar cookies del navegador ni inventar nonces.
+4. Cookies + `X-WP-Nonce` (nonce generado para la acción `wp_rest`) solo dentro de una sesión WordPress autorizada y adecuada; cookie sola puede tratarse como anónimo. No exportar cookies del navegador ni inventar nonces.
 5. OAuth/JWT/WordPress.com/APIs de comercio: solo si se descubren y se dispone de documentación de esa implementación. No instalar plugins ni intercambiar la contraseña principal por tokens a ciegas.
 
 ## Conversación mínima

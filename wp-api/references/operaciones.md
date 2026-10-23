@@ -29,12 +29,14 @@ Una solicitud URL-only obtiene diagnóstico, no una descarga automática. Pregun
 Las herramientas nativas HTTP o un script temporal pequeño son suficientes. No hace falta extender los CLI ni instalar MCP. Antes de la primera petición con efectos:
 
 1. **Descubrir esquema.** Método, endpoint, campos obligatorios, enums y tipos; no enviar `id`, `guid` u otros campos de solo lectura en un payload de actualización.
-2. **Leer estado actual.** Identificar ID por título/slug y mostrar candidatos si hay ambigüedad. Para editar conservar campos relevantes y `modified_gmt`; proteger la copia privada, no versionarla.
+2. **Leer estado actual.** Identificar ID por título/slug y mostrar candidatos si hay ambigüedad. Para editar contenido, usar cliente autenticado autorizado con `context=edit&_fields=id,content.raw,modified_gmt`; conservar la fuente y campos relevantes en una copia privada, no versionarla. `content.rendered` incluye filtros de WordPress/plugins y no sustituye la fuente; el CLI público no puede obtener `content.raw`.
 3. **Comprobar autorización.** Cuenta con permisos mínimos y canal seguro. No obtener secretos antes de que exista una tarea que los necesite.
 4. **Presentar plan.** Sitio, IDs/títulos, diferencias, estado final, cantidad, dependencias y reversibilidad. Separar borrador de publicación. Confirmar antes de cualquier escritura remota, incluidas subidas y creación de términos.
 5. **Releer antes del envío** si transcurrió tiempo o hubo interacción; si cambió el objeto, detener y reconciliar. REST core no ofrece compare-and-swap universal: esta lectura reduce el riesgo, no elimina carreras concurrentes.
 6. **Ejecutar una vez.** POST para crear/actualizar donde el esquema lo admita; no asumir PATCH universal. Envío mínimo. Registrar ID retornado y estado, sin secretos.
 7. **Verificar por GET** que los campos solicitados y estado coinciden. Para publicar, comprobar también el enlace público si es accesible. Un 2xx solo no prueba que el plugin haya conservado el contenido solicitado.
+
+Al modificar `content.raw`, preservar los comentarios/delimitadores Gutenberg (`<!-- wp:… -->`, `<!-- /wp:… -->` y bloques autocerrados), sus atributos y el anidamiento. No reconstruir bloques desde el HTML de `content.rendered`: puede incorporar índices u otras transformaciones que no pertenecen al documento editable. Si no hay fuente autorizada, detener esa edición y explicar el límite. Verificar después con lectura autenticada de la fuente, además del resultado visible cuando corresponda.
 
 Payload ilustrativo para crear una entrada, **no ejecutar en el sitio de ejemplo público**:
 
@@ -75,4 +77,4 @@ No asumir que WordPress admite una cabecera de idempotencia universal. No amplia
 - Para cambios: diferencias efectivas, estado final y GET de verificación. Para fallos: etapa y código observado, sin secretos ni respuesta privada completa.
 - Próxima intervención imprescindible, si existe; no pedir trabajo técnico que el agente todavía pueda resolver.
 
-Fuentes: [Entradas](https://developer.wordpress.org/rest-api/reference/posts/), [medios](https://developer.wordpress.org/rest-api/reference/media/), [taxonomías](https://developer.wordpress.org/rest-api/reference/taxonomies/).
+Fuentes: [Entradas y `content.raw`](https://developer.wordpress.org/rest-api/reference/posts/), [representación de bloques](https://developer.wordpress.org/block-editor/getting-started/fundamentals/markup-representation-block/), [medios](https://developer.wordpress.org/rest-api/reference/media/), [taxonomías](https://developer.wordpress.org/rest-api/reference/taxonomies/).

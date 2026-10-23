@@ -286,6 +286,21 @@ tryCatch({
   check(identical(.ultimos_params$after, "2024-01-01"), "export_filtros_en_query")
   check(identical(.ultimos_params$`_fields`, "id,title"), "export_campos_en_query")
 
+  campos_embed <- "id,title,meta.mi_clave,_links,_embedded"
+  salida <- suppressMessages(capture.output(codigo <- wp_cmd_export(args_exp(
+    filtro = c("_embed=author,wp:term"), campos = campos_embed
+  ))))
+  check(identical(codigo, 0L), "export_embed_codigo")
+  check(identical(.ultimos_params$`_embed`, "author,wp:term"), "export_embed_selectivo_sin_alterar")
+  check(identical(.ultimos_params$`_fields`, campos_embed), "export_campos_anidados_sin_alterar")
+
+  salida <- suppressMessages(capture.output(codigo <- wp_cmd_export(args_exp(
+    id = "17", filtro = c("_embed=author,wp:term"), campos = campos_embed
+  ))))
+  check(identical(codigo, 0L), "export_id_embed_codigo")
+  check(identical(.ultimos_params$`_embed`, "author,wp:term"), "export_id_embed_sin_alterar")
+  check(identical(.ultimos_params$`_fields`, campos_embed), "export_id_campos_anidados_sin_alterar")
+
   # Freno por solicitudes estimadas: max=1000, per-page=100 -> 10 > umbral 5
   codigo <- suppressMessages(wp_cmd_export(args_exp(max = "1000", umbral = "5")))
   check(identical(codigo, 3L), "export_frena_solicitudes")

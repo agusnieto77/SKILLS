@@ -769,6 +769,33 @@ class TestExport(unittest.TestCase):
         finally:
             wp_api.ClienteWP = original
 
+    def test_export_embed_selectivo_y_campos_anidados_sin_alterar(self):
+        campos = "id,title,meta.mi_clave,_links,_embedded"
+        # Una relacion ausente no debe inventarse ni impedir exportar lo disponible.
+        entrada = {"id": 17, "meta": {"mi_clave": "valor"},
+                   "_links": {"author": [{"href": "https://ejemplo.com/wp-json/wp/v2/users/3", "embeddable": True}]},
+                   "_embedded": {"author": [{"id": 3}]}}
+        for id_objeto in (None, "17"):
+            with self.subTest(id=id_objeto):
+                cuerpo = entrada if id_objeto else [entrada]
+                original, sesion = self._parchear([
+                    FakeRespuesta(200, {"x-wp-totalpages": "1"}, cuerpo),
+                ])
+                try:
+                    with tempfile.TemporaryDirectory() as td, \
+                            contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                        args = self._args(out=td, id=id_objeto, filtro=["_embed=author,wp:term"], campos=campos)
+                        self.assertEqual(wp_api.cmd_export(args), 0)
+                        self.assertEqual(sesion.llamadas[0]["params"]["_embed"], "author,wp:term")
+                        self.assertEqual(sesion.llamadas[0]["params"]["_fields"], campos)
+                        archivo = next((Path(td) / "json").glob("*.json"))
+                        items = json.loads(archivo.read_text(encoding="utf-8"))["items"]
+                        self.assertEqual(items, [entrada])
+                        self.assertNotIn("wp:term", items[0]["_embedded"])
+                        self.assertEqual(len(sesion.llamadas), 1)
+                finally:
+                    wp_api.ClienteWP = original
+
     def test_export_por_id(self):
         original, sesion = self._parchear([
             FakeRespuesta(200, cuerpo={"id": 17, "slug": "entrada"}),
