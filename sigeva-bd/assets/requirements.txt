@@ -1,0 +1,7 @@
+# Dependencias del cargador del Banco de Datos de SIGEVA.
+# Instalar:  python -m pip install -r requirements.txt && python -m playwright install chromium
+
+playwright>=1.45,<2        # navegador real: SIGEVA arma autores y fechas con JavaScript
+pypdf>=4                   # comandos `cv` (CV en PDF) y `pdf --paginas`: recortar el full text
+pymupdf>=1.24              # `pdf --comprimir`: bajar un full text por debajo de 35 MB
+pillow>=10                 # recompresion de imagenes en `pdf`

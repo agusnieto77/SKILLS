@@ -1,0 +1,9 @@
+{
+  "base": "https://si.conicet.gov.ar",
+  "rol_banco_datos": 96,
+  "persona_id": "",
+  "declarante": {"apellido": "Perez", "nombre": "Ana"},
+  "idioma_defecto": "Español",
+  "area_conocimiento": {"campo": "60", "subcampo": "Telecomunicaciones"},
+  "tablas": {"articulo": "3997137", "evento": "8106305"}
+}

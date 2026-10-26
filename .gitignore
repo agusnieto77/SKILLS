@@ -20,6 +20,8 @@ venv/
 *.local.json
 salidas-skill/
 wp-api/validation/datos/
+# sigeva-bd: personal data bank snapshots, captures, receipts and full maps stay local
+sigeva-trabajo/
 
 # Editors and OS
 .vscode/
