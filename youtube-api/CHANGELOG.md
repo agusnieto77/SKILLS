@@ -8,6 +8,7 @@
 - Salida `<id>_video.json`: `metodo` (yt-dlp con versión), `url`, `estrategia`, `formato_solicitado`, `formato_elegido` (id, resolución, codecs), `path_local`, `tamano_bytes` (medido sobre el archivo final), `runtime_js`, `solver_ejs`, `capturado_en_utc` y `declaracion`. Lotes con recibo `lote_video.json` y método propio.
 - 12 pruebas offline nuevas (99 en total): cascada DASH por altura/tasa con audio 140, fallback m4a, ausencia de DASH con presencia de m3u8, clasificación de fallos, CLI sin yt-dlp, contrato del JSON, fallback DASH y HLS tras formato no disponible, restricción de edad reportada sin evasión, corte de lote por bloqueo de cliente y escalón DASH inhabilitado sin ffmpeg.
 - Verificación en red del 26-10-2026 (Windows, yt-dlp 2026.10.21, node 24, ffmpeg 6.0.1): reproducción del error `Requested format is not available` con EJS incompleto y su resolución; descargas reales de `jNQXAC9IVRw` (escalones 1 y 2) y `rajbNWCjpmo` (transcripción, comentarios y video mp4 de 12 492 272 B); registradas en `validation/RESULTADOS.md`.
+- Corrección del CI: los tests de fallback DASH/HLS declaran explícitamente la presencia simulada de ffmpeg; antes dependían del PATH del runner y fallaban en entornos sin el binario. El caso sin ffmpeg conserva su prueba independiente; no se cambia el descargador ni se añade ffmpeg como requisito de los tests offline.
 
 ## 1.2.4 — 2026-10-23
 

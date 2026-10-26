@@ -1144,6 +1144,7 @@ class TestVideoCLI(unittest.TestCase):
             with patch.object(Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), \
                  patch.object(Y, "_version_yt_dlp", return_value="2026.10.21"), \
                  patch.object(Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                 patch.object(Y.shutil, "which", side_effect=lambda n: "ffmpeg" if n == "ffmpeg" else None), \
                  self.parches(respuestas) as correr:
                 codigo, _, _ = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
             self.assertEqual(codigo, 0)
@@ -1169,6 +1170,7 @@ class TestVideoCLI(unittest.TestCase):
             with patch.object(Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), \
                  patch.object(Y, "_version_yt_dlp", return_value="2026.10.21"), \
                  patch.object(Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                 patch.object(Y.shutil, "which", side_effect=lambda n: "ffmpeg" if n == "ffmpeg" else None), \
                  self.parches(respuestas) as correr:
                 codigo, _, _ = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
             self.assertEqual(codigo, 0)
