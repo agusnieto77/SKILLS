@@ -28,6 +28,20 @@ Ejecución real del 22-10-2026 en Windows (Python 3.13.16, `requests` 2.34.2). V
 | `transcripcion --url dQw4w9WgXcQ --lang en` | 61 segmentos, subtítulo **manual** (`automatica=false`) |
 | `comentarios --url dQw4w9WgXcQ --max 40` | 40 de **2 460 280** declarados. Antes del fix se informaban 24, porque se leía el contador abreviado "2,4 M" |
 
+## Revisión 1.3.0 (26-10-2026, Windows; yt-dlp 2026.10.21, node 24.22, ffmpeg 6.0.1)
+
+| Ejecución | Resultado |
+|---|---|
+| `yt-dlp 2026.06.09 -f "best[ext=mp4]/best"` (pip básico, node sin flag) | `ERROR: unable to download video data: HTTP Error 403: Forbidden`. Causa: yt-dlp con >90 días frente a la rotación de firmas |
+| `pip install -U yt-dlp` → 2026.10.21, `--js-runtimes node` sin solver | `n challenge solving failed` → `ERROR: Requested format is not available`: el error reportado en el diseño es reproducible y su causa es EJS incompleto |
+| Añadido `--remote-components ejs:github` | Descarga OK de `jNQXAC9IVRw` (escalón 1): formato 18, 320x240, 629 172 B; y escalón 2 manual `-f "133+140"` fusionado a mp4, 744 412 B. Confirma la línea `--print after_move:filepath|format_id|resolution|vcodec|acodec` usada por el CLI |
+| `yt_datos.py video --url <rajbNWCjpmo>` (RTVE Noticias) | Código 0; `estrategia=best_mp4_directo`, formato 18 (640x360, avc1.42001E + mp4a.40.2), 12 492 272 B, JSON de contrato completo, `runtime_js=node`, `solver_ejs=remota ejs:github` |
+| `yt_datos.py transcripcion --url <rajbNWCjpmo>` | Código 0; `es`, `automatica=true`, 81 segmentos |
+| `yt_datos.py comentarios --url <rajbNWCjpmo> --max 50` | Código 0; 31 de 71 declarados, `parcial=true`, `motivo_fin=sin_continuacion` (contrato conservador: menos filas que el total declarado) |
+| `python validation/test_yt_datos.py` | 99 pruebas OK (87 previas + 12 del subcomando `video`) |
+
+Las tres corridas de `rajbNWCjpmo` se ejecutaron en una carpeta temporal y se eliminaron tras verificar los archivos. Nota de entorno: la actualización local de yt-dlp (2026.06.09 → 2026.10.21) fue necesaria para verificar la vía real; el CLI documenta esa exigencia en `references/alternativas.md`.
+
 ## Comparación con otras vías
 
 | Vía | Comentarios obtenidos | Nota |

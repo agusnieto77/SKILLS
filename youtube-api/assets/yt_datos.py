@@ -7,8 +7,14 @@ Uso:
     python yt_datos.py transcripcion --url ID [--lang es,en] [--tipo-subtitulo manual] [--tlang es]
     python yt_datos.py comentarios  --url https://www.youtube.com/watch?v=ID [--max 200] [--con-respuestas] [--out datos]
     python yt_datos.py todo         --url https://www.youtube.com/watch?v=ID [--max 200] [--out datos]
+    python yt_datos.py video        --url https://www.youtube.com/watch?v=ID [--out datos]
     Todos aceptan --url ID1 ID2 o --archivo-ids ids.txt (hasta 50 entradas).
     Comentarios: --max-paginas 1..60 y --max-peticiones 1..120, compartidos con respuestas.
+
+`video` descarga una copia local (archivo/duo/docencia) delegando en yt-dlp,
+dependencia opcional: python -m pip install -U "yt-dlp[default]". Requiere
+ffmpeg en PATH para fusionar video+audio y un runtime JavaScript (deno o node)
+para extraer formatos; si falta algo, se avisa con instrucciones.
 
 Solo lectura: no envia credenciales ni modifica nada en YouTube. Usa la API
 interna (InnerTube) y las paginas publicas de watch, igual que un navegador
@@ -21,6 +27,8 @@ import argparse
 import csv
 import json
 import re
+import shutil
+import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -1069,11 +1077,12 @@ def _errores_resultado(datos: dict) -> list[str]:
     return errores
 
 
-def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatorio: bool = False) -> tuple[dict, bool]:
+def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatorio: bool = False,
+                    metodo: str | None = None) -> tuple[dict, bool]:
     recibo = {
         "comando": args.comando, "capturado_en_utc": _sello(), "max_videos": MAX_VIDEOS,
         "total": len(resultados), "exitosos": sum(r["ok"] for r in resultados), "resultados": resultados,
-        "metodo": "Lectura publica anonima; procesamiento secuencial, sin evasion de bloqueos",
+        "metodo": metodo or "Lectura publica anonima; procesamiento secuencial, sin evasion de bloqueos",
     }
     ruta = Path(args.out) / f"lote_{args.comando}.json"
     temporal = ruta.with_suffix(".json.tmp")
@@ -1095,10 +1104,323 @@ def _guardar_recibo(args: argparse.Namespace, resultados: list[dict], obligatori
     return recibo, persistido
 
 
+# --------------------------------------------------------------------------- #
+# Subcomando `video`: copia local via yt-dlp (dependencia opcional).
+# --------------------------------------------------------------------------- #
+URL_WIKI_EJS = "https://github.com/yt-dlp/yt-dlp/wiki/EJS"
+MENSAJE_INSTALAR_YT_DLP = (
+    "El subcomando video delega en yt-dlp y no se encontro. Instalar: "
+    'python -m pip install -U "yt-dlp[default]" (incluye los solver de EJS); '
+    "ffmpeg como binario del sistema para fusionar; deno o node como runtime "
+    f"JavaScript. Detalles: {URL_WIKI_EJS}"
+)
+# Mensaje que yt-dlp emite cuando el -f pedido no existe; dispara el escalon DASH.
+MARCA_FORMATO_NO_DISPONIBLE = "requested format is not available"
+# Senales positivas de restriccion del video o de bloqueo del cliente: se
+# informan, no se evaden (sin cookies, cuentas ni cliente alternativo).
+MARCAS_FALLO_YT_DLP = (
+    ("sign in to confirm you're not a bot", "bloqueo_cliente"),
+    ("sign in to confirm your age", "restriccion_edad"),
+    ("this video is private", "restriccion_privado"),
+    ("members-only", "restriccion_membresia"),
+)
+
+
+class DescargaVideo(YouTubeError):
+    """Fallo del subcomando video, con clasificacion de restriccion/bloqueo."""
+
+    def __init__(self, mensaje: str, clasificacion: str | None = None):
+        super().__init__(mensaje)
+        self.clasificacion = clasificacion
+
+
+def _resolver_yt_dlp() -> list[str] | None:
+    """Prefiere el ejecutable en PATH; respalda con el modulo de Python."""
+    if shutil.which("yt-dlp"):
+        return ["yt-dlp"]
+    try:
+        prueba = subprocess.run([sys.executable, "-m", "yt_dlp", "--version"],
+                                capture_output=True, text=True, timeout=60,
+                                encoding="utf-8", errors="replace")
+        if prueba.returncode == 0:
+            return [sys.executable, "-m", "yt_dlp"]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def _correr_yt_dlp(binario: list[str], argumentos: list[str],
+                   timeout: float | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(binario + argumentos, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=timeout)
+
+
+def _version_yt_dlp(binario: list[str]) -> str:
+    try:
+        proceso = _correr_yt_dlp(binario, ["--version"], timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return "desconocida"
+    return (proceso.stdout or "").strip() or "desconocida"
+
+
+def _soporta_opcion(binario: list[str], opcion: str, cache: dict) -> bool:
+    """Consulta --help una vez por opcion: versiones viejas no traen EJS."""
+    if opcion not in cache:
+        try:
+            proceso = _correr_yt_dlp(binario, ["--help"], timeout=60)
+            cache[opcion] = proceso.returncode == 0 and opcion in (proceso.stdout or "")
+        except (OSError, subprocess.SubprocessError):
+            cache[opcion] = False
+    return cache[opcion]
+
+
+def _runtime_js() -> str | None:
+    for nombre in ("deno", "node"):  # deno: recomendado y habilitado por defecto
+        if shutil.which(nombre):
+            return nombre
+    return None
+
+
+def _opciones_ejs(binario: list[str], cache: dict) -> tuple[list[str], dict]:
+    """Flags de runtime/solver EJS que esta version de yt-dlp admite."""
+    flags: list[str] = []
+    info: dict = {}
+    runtime = _runtime_js()
+    if runtime == "node" and _soporta_opcion(binario, "--js-runtimes", cache):
+        # Solo deno viene habilitado por defecto; node exige el flag.
+        flags += ["--js-runtimes", "node"]
+    info["runtime_js"] = runtime or "no detectado"
+    if _soporta_opcion(binario, "--remote-components", cache):
+        flags += ["--remote-components", "ejs:github"]
+        info["solver_ejs"] = "remota ejs:github (https://github.com/yt-dlp/ejs)"
+    else:
+        info["solver_ejs"] = "incluida o no requerida por esta version"
+    return flags, info
+
+
+def _formato_dash_desde_formatos(formatos: list[dict]) -> str | None:
+    """Cascada -f "video+140/..." con el mejor mp4 DASH https; None si no hay.
+
+    Video: solo-video (acodec "none"), ext mp4, protocolo https, con URL.
+    Orden determinista: altura, tasa y fps descendentes. Audio: 140 (m4a)
+    preferido; si falta, el mejor m4a https y, en ultimo caso, cualquier audio.
+    """
+    def es_audio(f: dict) -> bool:
+        return f.get("vcodec") == "none" and f.get("protocol") == "https" and bool(f.get("url"))
+
+    video = sorted(
+        (f for f in formatos
+         if (f.get("vcodec") or "none") != "none" and f.get("acodec") == "none"
+         and f.get("ext") == "mp4" and f.get("protocol") == "https" and bool(f.get("url"))),
+        key=lambda f: (f.get("height") or 0, f.get("tbr") or 0, f.get("fps") or 0),
+        reverse=True,
+    )
+    if not video:
+        return None
+    audio = next((f for f in formatos if str(f.get("format_id")) == "140" and es_audio(f)), None)
+    if audio is None:
+        candidatos = [f for f in formatos if es_audio(f)]
+        m4a = sorted((f for f in candidatos if f.get("ext") == "m4a"),
+                     key=lambda f: f.get("tbr") or 0, reverse=True)
+        audio = (m4a or sorted(candidatos, key=lambda f: f.get("tbr") or 0, reverse=True) or [None])[0]
+    if audio is None:
+        return None
+    pista = str(audio["format_id"])
+    return "/".join(f"{f['format_id']}+{pista}" for f in video)
+
+
+def _tiene_m3u8(formatos: list[dict]) -> bool:
+    return any(str(f.get("protocol") or "").startswith("m3u8") for f in formatos)
+
+
+def _clasificar_fallo_yt_dlp(mensaje: str) -> str | None:
+    texto = (mensaje or "").lower().replace("\u2019", "'")
+    for marca, clase in MARCAS_FALLO_YT_DLP:
+        if marca in texto:
+            return clase
+    return None
+
+
+def _resumen_error_yt_dlp(proceso: subprocess.CompletedProcess) -> str:
+    lineas = [l.strip() for l in (proceso.stderr or "").splitlines() if l.strip().startswith("ERROR")]
+    return " | ".join(lineas[:3]) or f"yt-dlp devolvio {proceso.returncode}"
+
+
+def _info_formatos(binario: list[str], base: list[str], url: str) -> list[dict]:
+    """Inventario -J de un video; lista vacia si la extraccion falla."""
+    try:
+        proceso = _correr_yt_dlp(binario, [*base, "--skip-download", "-J", url], timeout=300)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proceso.returncode != 0:
+        return []
+    try:
+        return json.loads(proceso.stdout or "").get("formats") or []
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+
+def _resultado_video(video_id: str, url: str, metodo: str, estrategia: str, formato_solicitado: str,
+                     proceso: subprocess.CompletedProcess, info_ejs: dict, avisos: dict) -> dict:
+    """Normaliza la salida del subcomando video a partir de la linea --print."""
+    # filepath|format_id|resolution|vcodec|acodec: rsplit porque el titulo
+    # podria contener "|" en sistemas que lo permiten; los 4 ultimos campos no.
+    lineas = [l for l in (proceso.stdout or "").splitlines() if l.strip()]
+    partes = (lineas[-1] if lineas else "").rsplit("|", 4)
+    completo = len(partes) == 5
+    ruta = partes[0] if completo else ""
+    resultado = {
+        "video_id": video_id,
+        "url": url,
+        "metodo": metodo,
+        "estrategia": estrategia,
+        "formato_solicitado": formato_solicitado,
+        "formato_elegido": (
+            {"id": partes[1], "resolucion": partes[2], "codec_video": partes[3], "codec_audio": partes[4]}
+            if completo else {"id": formato_solicitado}
+        ),
+        "path_local": ruta,
+        "tamano_bytes": Path(ruta).stat().st_size if ruta and Path(ruta).is_file() else None,
+        "runtime_js": info_ejs.get("runtime_js"),
+        "solver_ejs": info_ejs.get("solver_ejs"),
+        "capturado_en_utc": _sello(),
+        "declaracion": (
+            "Copia local para archivo, duo de datos o docencia; no redistribuir "
+            "sin permiso del titular. Lectura publica anonima: sin cookies, "
+            "tokens, cuentas ni evasion de bloqueos o restricciones."
+        ),
+    }
+    resultado.update(avisos)
+    return resultado
+
+
+def _descargar_video(video_id: str, args: argparse.Namespace, binario: list[str], cache: dict) -> dict:
+    """Escalera determinista de formatos; avisa dependencias ausentes, no las evade."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    destino = Path(args.out) / "videos" / video_id
+    plantilla = str(destino / "%(title).100B [%(id)s].%(ext)s")
+    ejs_flags, info_ejs = _opciones_ejs(binario, cache)
+    avisos: dict = {}
+    if info_ejs.get("runtime_js") == "no detectado":
+        avisos["aviso_js_runtime"] = (
+            "Sin runtime JavaScript (deno o node) en PATH: yt-dlp reciente puede no "
+            f"extraer formatos. {URL_WIKI_EJS}"
+        )
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        avisos["aviso_ffmpeg"] = (
+            "ffmpeg no esta en PATH: sin fusion solo se descargan formatos "
+            "progresivos (p. ej. 18); el escalon DASH queda inhabilitado."
+        )
+    metodo = f"yt-dlp {_version_yt_dlp(binario)} (subcomando video)"
+    impresion = ["--print", "after_move:%(filepath)s|%(format_id)s|%(resolution)s|%(vcodec)s|%(acodec)s"]
+    comunes = ["--no-playlist", *ejs_flags, "-o", plantilla, "--no-simulate", *impresion]
+
+    # Escalon 1: mejor mp4 (o mejor formato) directo.
+    formato = "best[ext=mp4]/best"
+    proceso = _correr_yt_dlp(
+        binario, [*comunes, *(["--merge-output-format", "mp4"] if ffmpeg else []), "-f", formato, url])
+    estrategia = "best_mp4_directo"
+    fallo_formato = MARCA_FORMATO_NO_DISPONIBLE in (
+        (proceso.stderr or "") + (proceso.stdout or "")).lower()
+    if proceso.returncode != 0 and fallo_formato and ffmpeg:
+        # Escalon 2: inventario -J y cascada DASH https mp4 + audio 140.
+        formatos = _info_formatos(binario, ["--no-playlist", *ejs_flags], url)
+        cascada = _formato_dash_desde_formatos(formatos)
+        if cascada:
+            formato = cascada
+            proceso = _correr_yt_dlp(binario, [*comunes, "--merge-output-format", "mp4", "-f", cascada, url])
+            estrategia = "dash_https_mp4_mas_audio_140"
+        # Escalon 3: variantes HLS (via de Repro), si no hubo DASH disponible.
+        if (estrategia != "dash_https_mp4_mas_audio_140" or proceso.returncode != 0) and _tiene_m3u8(formatos):
+            formato = "best[protocol^=m3u8]/best"
+            proceso = _correr_yt_dlp(
+                binario, [*comunes, "--merge-output-format", "mp4", "-f", formato, url])
+            estrategia = "hls_m3u8 (via de Repro, no DASH puro)"
+    if proceso.returncode == 0:
+        return _resultado_video(video_id, url, metodo, estrategia, formato, proceso, info_ejs, avisos)
+    mensaje = _resumen_error_yt_dlp(proceso)
+    clasificacion = _clasificar_fallo_yt_dlp(proceso.stderr or "")
+    if clasificacion == "restriccion_edad":
+        mensaje += " Restriccion de edad: se informa, no se evade (sin cookies ni cuentas)."
+    elif clasificacion == "bloqueo_cliente":
+        mensaje += " Bloqueo del cliente: se detiene; no se evita."
+    raise DescargaVideo(mensaje, clasificacion)
+
+
+def _ejecutar_comando_video(args: argparse.Namespace, entradas: list[str]) -> int:
+    """Lote del subcomando video: secuencial, con recibo y bloqueos reportados."""
+    binario = _resolver_yt_dlp()
+    if binario is None:
+        print(f"error: {MENSAJE_INSTALAR_YT_DLP}", file=sys.stderr)
+        return 2
+    metodo_recibo = f"yt-dlp {_version_yt_dlp(binario)}; copia local para archivo/duo/docencia, sin evasion"
+    lote = len(entradas) > 1 or args.archivo_ids is not None
+    cache: dict = {}
+    resultados = [
+        {"posicion": posicion, "entrada": entrada, "ok": False, "estado": "no_procesado", "motivo": "pendiente"}
+        for posicion, entrada in enumerate(entradas, 1)
+    ]
+    bloqueo: str | None = None
+    try:
+        if lote:
+            _guardar_recibo(args, resultados, metodo=metodo_recibo)
+        for indice, registro in enumerate(resultados):
+            entrada = registro["entrada"]
+            try:
+                video_id = extraer_id_video(entrada)
+            except YouTubeError as exc:
+                if not lote:
+                    print(f"error: {exc}", file=sys.stderr)
+                    return 2
+                registro.update(error=str(exc))
+            else:
+                registro["video_id"] = video_id
+                try:
+                    datos = _descargar_video(video_id, args, binario, cache)
+                    _escribir_json(Path(args.out) / f"{video_id}_video.json", datos)
+                    registro.update(ok=True, resultado=datos)
+                except DescargaVideo as exc:
+                    registro.update(error=str(exc))
+                    if exc.clasificacion == "bloqueo_cliente":
+                        bloqueo = "bloqueo_cliente_yt_dlp"
+                    elif exc.clasificacion:
+                        registro["clasificacion_error"] = exc.clasificacion
+                    if not lote:
+                        print(f"error: {exc}", file=sys.stderr)
+                except (OSError, subprocess.SubprocessError) as exc:
+                    registro.update(error=f"error al ejecutar yt-dlp: {exc}")
+                    if not lote:
+                        print(f"error: {exc}", file=sys.stderr)
+                if not lote:
+                    if registro.get("ok"):
+                        print(json.dumps(datos, ensure_ascii=False, indent=2))
+                        return 0
+                    return 1
+            registro["estado"] = "procesado"
+            registro.pop("motivo")
+            if bloqueo:
+                registro["bloqueo"] = bloqueo
+                for pendiente in resultados[indice + 1:]:
+                    pendiente["motivo"] = bloqueo
+            if lote:
+                _guardar_recibo(args, resultados, metodo=metodo_recibo)
+            if bloqueo:
+                break
+            if indice + 1 < len(entradas):
+                time.sleep(PAUSA)
+        recibo, _ = _guardar_recibo(args, resultados, obligatorio=True, metodo=metodo_recibo)
+    except OSError as exc:
+        print(f"error al escribir recibo: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(recibo, ensure_ascii=False, indent=2))
+    return 0 if all(r["ok"] for r in resultados) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="comando", required=True)
-    for comando in ("metadatos", "pistas", "transcripcion", "comentarios", "todo"):
+    for comando in ("metadatos", "pistas", "transcripcion", "comentarios", "todo", "video"):
         parte = sub.add_parser(comando)
         _arg_comunes(parte)
         if comando in {"transcripcion", "todo"}:
@@ -1113,6 +1435,8 @@ def main(argv: list[str] | None = None) -> int:
     except (YouTubeError, OSError, UnicodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.comando == "video":
+        return _ejecutar_comando_video(args, entradas)
     lote = len(entradas) > 1 or args.archivo_ids is not None
     cliente = ClienteYouTube()
     resultados = [

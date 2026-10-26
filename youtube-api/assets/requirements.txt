@@ -3,3 +3,11 @@
 
 requests>=2.31,<3          # cliente HTTP
 truststore>=0.8            # Windows: confiar en el almacen de certificados del SO
+
+# Opcionales: SOLO para el subcomando `video` (copia local del archivo de video).
+# El resto de la skill no las necesita. Instalacion recomendada:
+#   python -m pip install -U "yt-dlp[default]"   # [default] incluye los solver de EJS
+# ffmpeg: binario del sistema (fusion video+audio DASH), no instalable por pip aqui.
+# Runtime JavaScript exigido por yt-dlp reciente para extraer formatos:
+# deno (recomendado, habilitado por defecto) o node >= 22 (--js-runtimes node).
+# Referencia: https://github.com/yt-dlp/yt-dlp/wiki/EJS

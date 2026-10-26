@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 — 2026-10-26
+
+- Subcomando `video`: copia local del video en mp4 delegando en `yt-dlp`, dependencia opcional exclusiva (si falta, código 2 con instrucciones de instalación, sin tocar la red). Escalera de formato determinista: `best[ext=mp4]/best` → ante `Requested format is not available`, inventario `-J` y cascada DASH https mp4 + audio 140 (ejemplo verificado `137+140/136+140/231+140`) → HLS m3u8 registrada como vía de Repro, no DASH puro. ffmpeg ausente: aviso y solo formatos progresivos.
+- Runtime JavaScript (EJS): detección de deno/node; `--js-runtimes node` y `--remote-components ejs:github` se añaden cuando la versión de yt-dlp los admite. Sin runtime se registra `aviso_js_runtime` con la wiki EJS. Documentada la cadena completa en `references/alternativas.md` con los errores reales vistos (formato no disponible, 403 por yt-dlp desactualizado, warnings de EJS) y sus mitigaciones.
+- Ética de la descarga: declaración de copia local para archivo/duo/docencia sin redistribución por defecto; sin cookies, tokens ni evasión. Restricciones de edad/privado/membresía se reportan por entrada (`clasificacion_error`); el bloqueo de cliente ("Sign in to confirm you're not a bot") detiene el lote con `motivo=bloqueo_cliente_yt_dlp`.
+- Salida `<id>_video.json`: `metodo` (yt-dlp con versión), `url`, `estrategia`, `formato_solicitado`, `formato_elegido` (id, resolución, codecs), `path_local`, `tamano_bytes` (medido sobre el archivo final), `runtime_js`, `solver_ejs`, `capturado_en_utc` y `declaracion`. Lotes con recibo `lote_video.json` y método propio.
+- 12 pruebas offline nuevas (99 en total): cascada DASH por altura/tasa con audio 140, fallback m4a, ausencia de DASH con presencia de m3u8, clasificación de fallos, CLI sin yt-dlp, contrato del JSON, fallback DASH y HLS tras formato no disponible, restricción de edad reportada sin evasión, corte de lote por bloqueo de cliente y escalón DASH inhabilitado sin ffmpeg.
+- Verificación en red del 26-10-2026 (Windows, yt-dlp 2026.10.21, node 24, ffmpeg 6.0.1): reproducción del error `Requested format is not available` con EJS incompleto y su resolución; descargas reales de `jNQXAC9IVRw` (escalones 1 y 2) y `rajbNWCjpmo` (transcripción, comentarios y video mp4 de 12 492 272 B); registradas en `validation/RESULTADOS.md`.
+
 ## 1.2.4 — 2026-10-23
 
 - La ficha watch vuelve a tolerar `AGE_CHECK_REQUIRED`/`CONTENT_CHECK_REQUIRED`: `metadatos` y `comentarios` leen el HTML público de videos con verificación de edad, como antes de 1.2.3. Solo el reproductor rechaza esos estados.

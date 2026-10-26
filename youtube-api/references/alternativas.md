@@ -56,7 +56,43 @@ yt-dlp --skip-download --write-comments \
 
 Observado: 228 comentarios (168 de primer nivel + 60 respuestas) frente a los 229 declarados por la página; la diferencia es un comentario cuyo hilo no se publica en la interfaz. El orden por defecto de `yt-dlp` es "Más recientes", de ahí que su cobertura coincida con ese criterio.
 
-Advertencia habitual: `WARNING: [youtube] No supported JavaScript runtime could be found`. YouTube va exigiendo un runtime JavaScript (Deno) para resolver formatos. No afecta a metadatos, subtítulos ni comentarios, pero sí a la descarga de video.
+Advertencia habitual: `WARNING: [youtube] No supported JavaScript runtime could be found`. YouTube exige un runtime JavaScript (deno por defecto; node con `--js-runtimes node`) y los solver de EJS para resolver formatos. No afecta a metadatos, subtítulos ni comentarios, pero sí a la descarga de video: ver [Descarga del video](#descarga-del-video-subcomando-video).
+
+## Descarga del video (subcomando `video`)
+
+`yt_datos.py video` descarga una **copia local** (archivo, dúo de datos, docencia) delegando en `yt-dlp`. Es una dependencia opcional exclusiva de este subcomando: si falta, el CLI devuelve el código 2 con instrucciones (`python -m pip install -U "yt-dlp[default]"`); si falta ffmpeg, avisa y solo intenta formatos progresivos. La salida lleva una declaración explícita: copia local, no redistribución por defecto, lectura pública anónima (sin cookies, tokens, cuentas ni evasión de bloqueos o restricciones de edad/sesión).
+
+### Estrategia de formato (determinista)
+
+| Escalón | Intento | Cuándo se usa |
+|---|---|---|
+| 1 | `-f "best[ext=mp4]/best" --merge-output-format mp4` | Siempre |
+| 2 | Inventario `-J` y cascada `-f "137+140/136+140/231+140" --merge-output-format mp4` | Si yt-dlp responde `Requested format is not available` (caso real observado) |
+| 3 | `-f "best[protocol^=m3u8]/best" --merge-output-format mp4` | Si no hubo ningún mp4 DASH https disponible |
+
+- El escalón 2 elige los formatos **solo-video mp4 con protocolo https** ordenados por altura, tasa y fps descendentes, y el audio **140** (m4a); si el 140 no existe, el mejor m4a https y, en último caso, cualquier audio https. Ejemplos verificados en red: `-f "137+140/136+140/231+140" --merge-output-format mp4` (22-10-2026) y `-f "133+140"` con fusión ffmpeg en `jNQXAC9IVRw` (26-10-2026).
+- El escalón 3 es la vía de reproducción HLS (**Repro**), no DASH puro: la salida lo registra con `estrategia: "hls_m3u8 (via de Repro, no DASH puro)"`.
+- Sin ffmpeg no hay fusión: solo se descargan formatos progresivos (p. ej. 18) y los escalones 2 y 3 quedan inhabilitados, con aviso en la salida.
+
+### Dependencia de runtime JavaScript (EJS)
+
+Las versiones recientes de yt-dlp requieren un runtime externo para los desafíos JavaScript de YouTube, según la [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS):
+
+- **deno** (recomendado, ≥ 2.3.0): habilitado por defecto.
+- **node** (≥ 22): exige `--js-runtimes node`; el CLI lo añade cuando detecta node y la versión de yt-dlp admite el flag (se comprueba contra `--help`).
+- Los *solver* de EJS vienen empaquetados en los binarios oficiales y en `yt-dlp[default]` (pip). Con el paquete básico de pip hay que habilitar `--remote-components ejs:github` (o `ejs:npm`, solo deno); el CLI lo añade cuando está soportado.
+
+Sin runtime o sin solver, la extracción pierde formatos y el escalón 1 muere con `Requested format is not available` aunque el video exista. Es la causa real observada detrás de ese error, no un problema del video.
+
+### Errores comunes y mitigaciones
+
+| Síntoma | Causa | Mitigación |
+|---|---|---|
+| `Requested format is not available` | El `-f` pedido no existe; hoy lo provoca sobre todo un EJS incompleto que filtra formatos | Escalones 2 y 3 automáticos; después revisar runtime+solver y actualizar yt-dlp |
+| `WARNING: No supported JavaScript runtime could be found`, `n challenge solving failed` | Falta deno/node, el flag de node o los solver | Instalar deno (o `--js-runtimes node`) y usar `yt-dlp[default]` o `--remote-components ejs:github` |
+| `HTTP Error 403: Forbidden` al descargar | yt-dlp desactualizado frente a la rotación de firmas de `googlevideo` (observado 26-10-2026 con 2026.06.09; resuelto al pasar a 2026.10.21) | `python -m pip install -U yt-dlp` |
+| Fusión fallida / `ffmpeg not found` | ffmpeg ausente en PATH | Instalar ffmpeg; sin él, solo formatos progresivos |
+| `Sign in to confirm your age`, `Sign in to confirm you're not a bot` | Restricción del video o bloqueo del cliente | Se informa (edad: error del video; bot: detiene el lote); sin cookies, cuentas ni evasión |
 
 ## 3. `youtube-transcript-api`
 
@@ -116,6 +152,10 @@ Para un canal con clave de proyecto propia, usar uploads → `playlistItems.list
 ## Contrato de salidas del CLI
 
 Todas las salidas JSON de operación llevan método/fuente y fecha `capturado_en_utc` cuando la operación se completa. En `todo`, cada error se intenta guardar en su propio JSON con ID y fecha; un fallo de escritura queda en el resultado sin descartar otras operaciones. Si también falla el JSON de error, se añade `error_escritura`; el recibo de lote preserva esos resultados si puede escribirse. Ante bloqueo, las operaciones restantes quedan `{estado: "no_procesado", motivo, error}` sin nuevas peticiones.
+
+### Video
+
+`<id>_video.json`: `metodo` (yt-dlp con versión), `url`, `estrategia` (`best_mp4_directo`, `dash_https_mp4_mas_audio_140` o `hls_m3u8 (via de Repro, no DASH puro)`), `formato_solicitado`, `formato_elegido` (`id`, `resolucion`, `codec_video`, `codec_audio`), `path_local`, `tamano_bytes`, `runtime_js`, `solver_ejs`, `capturado_en_utc` y `declaracion` de copia local sin redistribución. El tamaño se mide sobre el archivo final tras la fusión. Los lotes usan el recibo `lote_video.json` como el resto de comandos; un bloqueo de cliente (`Sign in to confirm you're not a bot`) marca las entradas restantes `no_procesado` con `motivo=bloqueo_cliente_yt_dlp`, y las restricciones de edad/privado/membresía se reportan por entrada con `clasificacion_error`. yt-dlp ausente: código 2 con instrucciones, antes de tocar la red.
 
 ### Comentarios y cobertura
 

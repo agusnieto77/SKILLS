@@ -5,6 +5,7 @@ Ejecutar:  python youtube-api/validation/test_yt_datos.py
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -1026,6 +1027,198 @@ class TestLotesCLI(unittest.TestCase):
         self.assertEqual(len(sesion.llamadas), 4)
         self.assertEqual(recibo["resultados"][1]["resultado"]["transcripcion"]["estado"], "no_procesado")
         self.assertEqual(recibo["resultados"][2]["motivo"], "login_required")
+
+
+
+
+FORMATOS_ZOO = [
+    {"format_id": "139", "ext": "m4a", "protocol": "https", "vcodec": "none", "acodec": "mp4a.40.5", "tbr": 48.5, "url": "https://a/139"},
+    {"format_id": "140", "ext": "m4a", "protocol": "https", "vcodec": "none", "acodec": "mp4a.40.2", "tbr": 129.8, "url": "https://a/140"},
+    {"format_id": "251", "ext": "webm", "protocol": "https", "vcodec": "none", "acodec": "opus", "tbr": 106.0, "url": "https://a/251"},
+    {"format_id": "18", "ext": "mp4", "protocol": "https", "vcodec": "avc1.42001E", "acodec": "mp4a.40.2", "height": 240, "tbr": 266.5, "fps": 15, "url": "https://a/18"},
+    {"format_id": "134", "ext": "mp4", "protocol": "https", "vcodec": "avc1.4D400C", "acodec": "none", "height": 240, "tbr": 136.2, "fps": 15, "url": "https://a/134"},
+    {"format_id": "133", "ext": "mp4", "protocol": "https", "vcodec": "avc1.4D400C", "acodec": "none", "height": 240, "tbr": 183.0, "fps": 15, "url": "https://a/133"},
+    {"format_id": "160", "ext": "mp4", "protocol": "https", "vcodec": "avc1.4D400B", "acodec": "none", "height": 144, "tbr": 83.0, "fps": 15, "url": "https://a/160"},
+    {"format_id": "229", "ext": "mp4", "protocol": "m3u8_native", "vcodec": "avc1.4D400C", "acodec": "none", "height": 240, "tbr": 245.1, "fps": 15, "url": "https://a/229"},
+    {"format_id": "234", "ext": "mp4", "protocol": "m3u8_native", "vcodec": "none", "acodec": None},
+]
+
+
+class TestFormatoVideo(unittest.TestCase):
+    def test_cascada_dash_por_altura_y_tasa_con_audio_140(self):
+        cascada = Y._formato_dash_desde_formatos(FORMATOS_ZOO)
+        # Mismo orden que -F: solo-video mp4 https, altura y tasa descendentes;
+        # el progresivo 18 y el HLS 229 quedan fuera; audio 140 preferido.
+        self.assertEqual(cascada, "133+140/134+140/160+140")
+
+    def test_sin_140_toma_el_mejor_m4a_https(self):
+        sin_140 = [f for f in FORMATOS_ZOO if f["format_id"] != "140"]
+        self.assertTrue(Y._formato_dash_desde_formatos(sin_140).startswith("133+139/"))
+
+    def test_sin_dash_mp4_https_no_hay_cascada_pero_hay_m3u8(self):
+        solo_hls = [f for f in FORMATOS_ZOO if f["protocol"] != "https" or f["format_id"] in ("139", "140", "251")]
+        self.assertIsNone(Y._formato_dash_desde_formatos(solo_hls))
+        self.assertTrue(Y._tiene_m3u8(solo_hls))
+
+    def test_sin_ningun_audio_no_hay_cascada(self):
+        sin_audio = [f for f in FORMATOS_ZOO if f["vcodec"] != "none"]
+        self.assertIsNone(Y._formato_dash_desde_formatos(sin_audio))
+
+    def test_clasificacion_de_fallos_yt_dlp(self):
+        self.assertEqual(Y._clasificar_fallo_yt_dlp(
+            "ERROR: [youtube] X: Sign in to confirm you\u2019re not a bot"), "bloqueo_cliente")
+        self.assertEqual(Y._clasificar_fallo_yt_dlp(
+            "ERROR: [youtube] X: Sign in to confirm your age"), "restriccion_edad")
+        self.assertIsNone(Y._clasificar_fallo_yt_dlp("ERROR: [youtube] X: Video unavailable"))
+
+
+class TestVideoCLI(unittest.TestCase):
+    def ejecutar(self, argv):
+        salida = io.StringIO()
+        error = io.StringIO()
+        with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(error):
+            codigo = Y.main(argv)
+        return codigo, salida.getvalue(), error.getvalue()
+
+    @staticmethod
+    def proceso_ok(stdout=""):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+
+    @staticmethod
+    def proceso_error(stderr=""):
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=stderr)
+
+    def parches(self, respuestas):
+        """_correr_yt_dlp devuelve la respuesta segun la cola o inspeccionando -J."""
+        cola = list(respuestas)
+
+        def falso(binario, argumentos, timeout=None):
+            if "-J" in argumentos:
+                if cola and isinstance(cola[0], dict):
+                    return self.proceso_ok(json.dumps(cola.pop(0)))
+                return self.proceso_ok(json.dumps({"formats": FORMATOS_ZOO}))
+            return cola.pop(0)
+
+        return patch.object(Y, "_correr_yt_dlp", side_effect=falso)
+
+    def test_sin_yt_dlp_devuelve_2_con_instrucciones(self):
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(Y, "_resolver_yt_dlp", return_value=None):
+            with self.parches([]) as correr:
+                codigo, _, error = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
+        self.assertEqual(codigo, 2)
+        self.assertIn("pip install", error)
+        correr.assert_not_called()
+
+    def test_descarga_directa_escribe_json_de_contrato(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            archivo = Path(carpeta) / "videos" / VIDEO_ID / "clip.mp4"
+            archivo.parent.mkdir(parents=True)
+            archivo.write_bytes(b"x" * 128)
+            linea = f"{archivo}|18|320x240|avc1.42001E|mp4a.40.2"
+            with patch.object(Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), \
+                 patch.object(Y, "_version_yt_dlp", return_value="2026.10.21"), \
+                 patch.object(Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                 self.parches([self.proceso_ok(linea)]):
+                codigo, salida, _ = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
+            self.assertEqual(codigo, 0)
+            datos = json.loads((Path(carpeta) / f"{VIDEO_ID}_video.json").read_text(encoding="utf-8"))
+            self.assertEqual(datos["metodo"], "yt-dlp 2026.10.21 (subcomando video)")
+            self.assertEqual(datos["url"], f"https://www.youtube.com/watch?v={VIDEO_ID}")
+            self.assertEqual(datos["formato_elegido"]["id"], "18")
+            self.assertEqual(datos["tamano_bytes"], 128)
+            self.assertEqual(datos["estrategia"], "best_mp4_directo")
+            self.assertIn("capturado_en_utc", datos)
+            self.assertIn("no redistribuir", datos["declaracion"])
+            self.assertIn('"path_local"', salida)
+
+    def test_fallback_dash_tras_formato_no_disponible(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            archivo = Path(carpeta) / "videos" / VIDEO_ID / "clip.mp4"
+            archivo.parent.mkdir(parents=True)
+            archivo.write_bytes(b"x" * 64)
+            respuestas = [
+                self.proceso_error("ERROR: [youtube] X: Requested format is not available"),
+                {"formats": FORMATOS_ZOO},  # inventario -J
+                self.proceso_ok(f"{archivo}|133+140|320x240|avc1.4D400C|mp4a.40.2"),
+            ]
+            with patch.object(Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), \
+                 patch.object(Y, "_version_yt_dlp", return_value="2026.10.21"), \
+                 patch.object(Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                 self.parches(respuestas) as correr:
+                codigo, _, _ = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
+            self.assertEqual(codigo, 0)
+            datos = json.loads((Path(carpeta) / f"{VIDEO_ID}_video.json").read_text(encoding="utf-8"))
+            self.assertEqual(datos["estrategia"], "dash_https_mp4_mas_audio_140")
+            self.assertEqual(datos["formato_solicitado"], "133+140/134+140/160+140")
+            self.assertEqual(datos["formato_elegido"]["id"], "133+140")
+            descargas = [a for a in correr.call_args_list if "-f" in a.args[1]]
+            self.assertEqual([d.args[1][d.args[1].index("-f") + 1] for d in descargas],
+                             ["best[ext=mp4]/best", "133+140/134+140/160+140"])
+
+    def test_fallback_hls_cuando_no_hay_dash(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            archivo = Path(carpeta) / "videos" / VIDEO_ID / "clip.mp4"
+            archivo.parent.mkdir(parents=True)
+            archivo.write_bytes(b"x" * 32)
+            solo_hls = [f for f in FORMATOS_ZOO if f["protocol"] != "https" or f["format_id"] in ("139", "140", "251")]
+            respuestas = [
+                self.proceso_error("ERROR: [youtube] X: Requested format is not available"),
+                {"formats": solo_hls},
+                self.proceso_ok(f"{archivo}|229+140|320x240|avc1.4D400C|mp4a.40.2"),
+            ]
+            with patch.object(Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), \
+                 patch.object(Y, "_version_yt_dlp", return_value="2026.10.21"), \
+                 patch.object(Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                 self.parches(respuestas) as correr:
+                codigo, _, _ = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
+            self.assertEqual(codigo, 0)
+            datos = json.loads((Path(carpeta) / f"{VIDEO_ID}_video.json").read_text(encoding="utf-8"))
+            self.assertEqual(datos["estrategia"], "hls_m3u8 (via de Repro, no DASH puro)")
+            self.assertEqual(datos["formato_solicitado"], "best[protocol^=m3u8]/best")
+            descargas = [a for a in correr.call_args_list if "-f" in a.args[1]]
+            self.assertEqual(len(descargas), 2)  # el escalon DASH no llego a ejecutarse
+
+    def test_restriccion_de_edad_se_reporta_sin_evasion(self):
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+                Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), patch.object(
+                Y, "_version_yt_dlp", return_value="2026.10.21"), patch.object(
+                Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                self.parches([self.proceso_error(
+                    "ERROR: [youtube] X: Sign in to confirm your age. "
+                    "This video may be inappropriate for some users.")]):
+            codigo, _, error = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
+        self.assertEqual(codigo, 1)
+        self.assertIn("no se evade", error)
+        self.assertFalse((Path(carpeta) / f"{VIDEO_ID}_video.json").exists())
+
+    def test_bloqueo_de_cliente_detiene_el_lote(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            respuestas = [self.proceso_error(
+                "ERROR: [youtube] X: Sign in to confirm you're not a bot")]
+            with patch.object(Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), \
+                 patch.object(Y, "_version_yt_dlp", return_value="2026.10.21"), \
+                 patch.object(Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), \
+                 patch.object(Y.time, "sleep"), self.parches(respuestas):
+                codigo, salida, _ = self.ejecutar(["video", "--url", VIDEO_ID, "abcdefghijk", "--out", carpeta])
+            recibo = json.loads(salida)
+            self.assertEqual(codigo, 1)
+            self.assertEqual(recibo["resultados"][0]["bloqueo"], "bloqueo_cliente_yt_dlp")
+            self.assertEqual(recibo["resultados"][1]["estado"], "no_procesado")
+            self.assertEqual(recibo["resultados"][1]["motivo"], "bloqueo_cliente_yt_dlp")
+
+    def test_sin_ffmpeg_el_escalon_dash_queda_inhabilitado(self):
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(
+                Y, "_resolver_yt_dlp", return_value=["yt-dlp"]), patch.object(
+                Y, "_version_yt_dlp", return_value="2026.10.21"), patch.object(
+                Y, "_opciones_ejs", return_value=([], {"runtime_js": "node", "solver_ejs": "incluida"})), patch.object(
+                Y.shutil, "which", side_effect=lambda n: {"yt-dlp": "x"}.get(n)):
+            with self.parches([self.proceso_error(
+                    "ERROR: [youtube] X: Requested format is not available")]) as correr:
+                codigo, _, error = self.ejecutar(["video", "--url", VIDEO_ID, "--out", carpeta])
+        self.assertEqual(codigo, 1)
+        self.assertEqual(correr.call_count, 1)  # ni -J ni reintentos: sin fusion no hay cascada
+        datos_no_escritos = not (Path(carpeta) / f"{VIDEO_ID}_video.json").exists()
+        self.assertTrue(datos_no_escritos)
 
 
 if __name__ == "__main__":
