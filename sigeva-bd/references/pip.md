@@ -96,6 +96,11 @@ Reglas de lectura:
   "Plan de trabajo" y "Aval de la autoridad máxima del LT del titular", sin "(PDF)").
   Se valida que exista, que sea PDF y que entre en el límite del módulo
   (35 MB por defecto, configurable con `limite_adjunto_mb` en config).
+- `guardar_vacio`: guarda el formulario sin tocar nada (recusación sin recusados,
+  otras fuentes sin tildar). Ojo: en el sitio real el Guardar vacío **no** marca "Ok"
+  en esas pantallas (probado con clicks reales y relectura del DOM): si no hay nada
+  que declarar y el sitio no ofrece cómo decirlo, se informa `no-guardado` y la
+  persona lo resuelve a mano o con la mesa de ayuda; jamás se inventa contenido.
 - Declaración jurada: campo vacío o faltante → `pip-preparar` bloquea y se le pide el dato a la
   persona; nada se completa con algo plausible.
 
