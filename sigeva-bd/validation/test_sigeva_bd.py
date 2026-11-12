@@ -25,6 +25,7 @@ sys.path.insert(0, str(AQUI))
 import sigeva_bd as B  # noqa: E402
 import sigeva_mapa as M  # noqa: E402
 import sigeva_cv as CV  # noqa: E402
+import sigeva_pip as PIP  # noqa: E402
 
 BIB = r"""
 @article{perez2024,
@@ -544,6 +545,312 @@ class TestSimulado(unittest.TestCase):
         self.assertGreater(informe["resumen"]["critico"], 0)
         self.assertEqual((refs / "mapa-base.json").read_text(encoding="utf-8"), base_antes)
         self.assertIn("SIN actualizar", (refs / "historial-cambios.md").read_text(encoding="utf-8"))
+
+
+class TestPipRelleno(unittest.TestCase):
+    """Lógica pura de grillas (sin navegador): emparejado contra la grilla real."""
+
+    def test_planificar_grilla_mapea_por_rubro_y_anio(self):
+        mapa = [{"indice": 0, "etiqueta": "Equipamiento (1)", "rubro": "1", "anio": "2026"},
+                {"indice": 1, "etiqueta": "Equipamiento (1)", "rubro": "1", "anio": "2027"},
+                {"indice": 3, "etiqueta": "Licencias (2)", "rubro": "2", "anio": "2026"}]
+        plan = PIP.planificar_grilla(mapa, {"1": {"2027": "2000000,00"}, "2": {"2026": "0,00"}})
+        self.assertEqual(plan, [(1, "2000000,00"), (3, "0,00")])
+
+    def test_planificar_grilla_rechaza_celda_inexistente_o_ambigua(self):
+        mapa = [{"indice": 0, "etiqueta": "Equipamiento (1)", "rubro": "1", "anio": "2026"}]
+        with self.assertRaises(Exception):
+            PIP.planificar_grilla(mapa, {"9": {"2026": "1,00"}})
+        with self.assertRaises(Exception):
+            PIP.planificar_grilla(
+                [{"indice": 0, "etiqueta": "Equipamiento (1)", "rubro": "1", "anio": "2026"},
+                 {"indice": 1, "etiqueta": "Otro (1)", "rubro": "1", "anio": "2027"}],
+                {"1": {"2026": "1,00"}})
+        with self.assertRaises(Exception):
+            PIP.planificar_grilla([], {"1": {"2026": "1,00"}})
+
+    def test_planificar_grilla_acepta_codigo_distinto_del_numero_visible(self):
+        # Financiamiento adicional: ubicaciones 4/5/7/8 con etiquetas (2)/(3)/(4)/(5).
+        mapa = [{"indice": 3, "etiqueta": "Bienes de consumo (2)", "rubro": "4", "anio": "2026"},
+                {"indice": 4, "etiqueta": "Bienes de consumo (2)", "rubro": "4", "anio": "2027"}]
+        plan = PIP.planificar_grilla(mapa, {"4": {"2026": "150000,00"}})
+        self.assertEqual(plan, [(3, "150000,00")])
+
+    def test_planificar_grupo_empareja_por_nombre_y_avisa_faltantes(self):
+        filas = [{"indice": 0, "texto": "NIETO, ALEJANDRO AGUSTÍN | INV INDEPENDIENTE", "pid": "420837", "ded": "100"},
+                 {"indice": 1, "texto": "PIVA, ADRIÁN | INV PRINCIPAL", "pid": "422703", "ded": "100"}]
+        plan, avisos = PIP.planificar_grupo(
+            filas, [{"nombre": "Nieto, Alejandro Agustin", "dedicacion": "100"},
+                    {"nombre": "Piva, Adrián", "dedicacion": "50", "rol": "Investigador"},
+                    {"nombre": "Román, Maximiliano", "dedicacion": "50"}])
+        self.assertEqual(avisos, ["no encontrado (o ambiguo) en la grilla: Román, Maximiliano"])
+        self.assertEqual(plan[0], {"indice": 0, "pid": "420837", "valor_rol": None, "dedicacion": "100"})
+    def test_grupo_al_dia_detecta_diferencias(self):
+        filas = [{"indice": 0, "texto": "NIETO, ... | INV INDEPENDIENTE", "pid": "1",
+                  "ded": "100", "rol": "1-0"},
+                 {"indice": 1, "texto": "PIVA, ... | INV PRINCIPAL", "pid": "2",
+                  "ded": "50", "rol": "2-3"}]
+        ok, _ = PIP.grupo_al_dia(filas, [{"nombre": "Nieto", "dedicacion": "100"},
+                                          {"nombre": "Piva", "dedicacion": "50"}])
+        # "Nieto" está contenido en "NIETO, ..." y "Piva" en "PIVA, ...": coinciden.
+        self.assertTrue(ok)
+        ok2, _ = PIP.grupo_al_dia(filas, [{"nombre": "Nieto", "dedicacion": "100"}])
+        self.assertTrue(ok2)
+        ok3, _ = PIP.grupo_al_dia([dict(filas[0], ded="50")],
+                                   [{"nombre": "Nieto", "dedicacion": "100"}])
+        self.assertFalse(ok3)
+
+
+class TestPipPreparar(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.pdf = self.dir / "plan.pdf"
+        self.pdf.write_bytes(b"%PDF-1.4 plan")
+        self.config = {"limite_adjunto_mb": 35}
+
+    def datos(self, **extra) -> dict:
+        base = {"tramite": "11220260100119CO", "secciones": [
+            {"clave": "datos-proyecto", "seccion": "Datos del proyecto",
+             "campos": {"tituloProyecto": "Título", "resumenProyecto": "R", "fechaInicio": "09/2027"}},
+            {"clave": "plan", "seccion": "Plan de trabajo (PDF)", "archivo": {"ruta": str(self.pdf), "tipo": "1"}},
+        ]}
+        base.update(extra)
+        return base
+
+    def test_valido_pasa_sin_errores(self):
+        salida = PIP.validar_pip(self.datos(), self.config)
+        self.assertEqual(salida["errores"], [])
+        self.assertEqual([i["clave"] for i in salida["items"]], ["datos-proyecto", "plan"])
+        self.assertEqual(salida["items"][1]["archivo"]["campo"], "theFile")
+
+    def test_sin_tramite_o_sin_secciones_bloquea(self):
+        self.assertTrue(PIP.validar_pip({}, self.config)["errores"])
+        self.assertTrue(PIP.validar_pip({"tramite": "x"}, self.config)["errores"])
+        self.assertTrue(PIP.validar_pip(self.datos(tramite="abc"), self.config)["errores"])
+
+    def test_campos_vacios_no_se_estiman(self):
+        datos = self.datos()
+        datos["secciones"][0]["campos"]["resumenProyecto"] = ""
+        salida = PIP.validar_pip(datos, self.config)
+        self.assertTrue(any("no se estiman" in e for e in salida["errores"]))
+
+    def test_adjunto_inexistente_o_no_pdf_o_grande_bloquea(self):
+        datos = self.datos()
+        datos["secciones"][1]["archivo"]["ruta"] = str(self.dir / "falta.pdf")
+        self.assertTrue(any("no existe" in e for e in PIP.validar_pip(datos, self.config)["errores"]))
+        otro = self.dir / "otro.txt"
+        otro.write_text("no es pdf")
+        datos["secciones"][1]["archivo"]["ruta"] = str(otro)
+        self.assertTrue(any("no es un PDF" in e for e in PIP.validar_pip(datos, self.config)["errores"]))
+        grande = self.dir / "grande.pdf"
+        grande.write_bytes(b"%PDF-1.4 " + b"x" * 4096)
+        datos["secciones"][1]["archivo"]["ruta"] = str(grande)
+        salida = PIP.validar_pip(datos, {"limite_adjunto_mb": 0.001})
+        self.assertTrue(any("límite" in e for e in salida["errores"]))
+
+    def test_clave_duplicada_y_seccion_sin_contenido_bloquean(self):
+        datos = self.datos()
+        datos["secciones"].append({"clave": "plan", "seccion": "Plan de trabajo (PDF)"})
+        salida = PIP.validar_pip(datos, self.config)
+        self.assertTrue(any("duplicada" in e for e in salida["errores"]))
+        salida = PIP.validar_pip(self.datos(secciones=[{"clave": "x", "seccion": "Seguridad"}]), self.config)
+        self.assertTrue(any("nada para completar" in e for e in salida["errores"]))
+
+    def test_linea_base_del_simulador_no_habilita_el_sitio_real(self):
+        with self.assertRaises(SystemExit):
+            PIP._chequear_origen({"origen": "simulador"}, {"base": "https://si.conicet.gov.ar/"})
+        PIP._chequear_origen({"origen": "real"}, {"base": "https://si.conicet.gov.ar/"})  # no explota
+        PIP._chequear_origen({"origen": "simulador"}, {"base": "http://127.0.0.1:1/"})
+
+
+@unittest.skipUnless(_chromium_disponible(), "Playwright/Chromium no instalados")
+class TestPipSimulado(unittest.TestCase):
+    """Punta a punta del modulo de convocatorias contra el simulador."""
+
+    def setUp(self):
+        import sigeva_simulado as S
+        import sigeva_pip as PIP_MOD
+
+        self.S = S
+        self.PIP = PIP_MOD
+        self.previo_intentos = PIP_MOD.INTENTOS_ESTADO
+        PIP_MOD.INTENTOS_ESTADO = 1  # en tests no esperar 10 s entre relecturas
+        self.servidor = S.Servidor().__enter__()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.plan = self.dir / "plan.pdf"
+        self.plan.write_bytes(b"%PDF-1.4 plan de trabajo")
+        self.config = self.dir / "config.json"
+        self.config.write_text(json.dumps({"base": self.servidor.base, **CONFIG}), encoding="utf-8")
+        for clave in ("SIGEVA_USER", "SIGEVA_PASS"):
+            os.environ.pop(clave, None)
+        # Linea base PIP del simulador: todo trabajo contra el modulo empieza con pip-verificar --auto.
+        self.refs = self.dir / "refs"
+        codigo, mapa = self.correr("pip-mapear", "--headless", "--referencias", str(self.refs),
+                                   "--aceptar", "--pausa-ms", "0")
+        assert codigo == 0, mapa
+        self.servidor.estado.peticiones.clear()
+
+    def tearDown(self):
+        self.PIP.INTENTOS_ESTADO = self.previo_intentos
+        self.servidor.__exit__(None, None, None)
+        self.tmp.cleanup()
+
+    def correr(self, *argv):
+        salida = io.StringIO()
+        with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(io.StringIO()):
+            codigo = B.main([argv[0], "--config", str(self.config), "--dir", str(self.dir), *argv[1:]])
+        try:
+            return codigo, json.loads(salida.getvalue())
+        except json.JSONDecodeError:
+            return codigo, {}
+
+    def datos(self, **extra) -> dict:
+        base = {"tramite": self.S.CODIGO_TRAMITE, "secciones": [
+            {"clave": "datos-proyecto", "seccion": "Datos del proyecto",
+             "campos": {"tituloProyecto": "Conflictividad y herramientas digitales",
+                        "resumenProyecto": "Resumen", "fechaInicio": "09/2027"}},
+            {"clave": "aspectos", "seccion": "Aspectos éticos",
+             "campos": {"usaComiteEtica": "2", "fundamentacionEtica": "No involucra"}},
+            {"clave": "plan", "seccion": "Plan de trabajo (PDF)", "archivo": {"ruta": str(self.plan), "tipo": "1"}},
+        ]}
+        base.update(extra)
+        return base
+
+    def pip_preparar(self, datos):
+        ruta = self.dir / "pip.json"
+        ruta.write_text(json.dumps(datos), encoding="utf-8")
+        return self.correr("pip-preparar", "--datos", str(ruta), "--salida", str(self.dir / "pip-listos.json"))
+
+    def pip_cargar(self, *flags):
+        return self.correr("pip-cargar", "--datos", str(self.dir / "pip-listos.json"),
+                           "--headless", "--referencias", str(self.refs), "--pausa-ms", "0", *flags)
+
+    def posts(self):
+        return [p for m, p in self.servidor.estado.peticiones if m == "POST"]
+
+    def test_pip_mapear_es_solo_lectura_y_arma_linea_base(self):
+        refs = self.dir / "refs-pip"
+        posts_antes = len(self.posts())
+        codigo, mapa = self.correr("pip-mapear", "--headless", "--referencias", str(refs),
+                                   "--aceptar", "--pausa-ms", "0")
+        self.assertEqual((codigo, mapa["contrato"], mapa["completo"]), (0, [], True), mapa)
+        self.assertEqual(mapa["origen"], "simulador")
+        self.assertEqual(mapa["tramite_pantalla"], "index.do?tramiteid=7")
+        self.assertEqual(self.posts()[posts_antes:], [])  # el recorrido del modulo no envia nada
+        self.assertTrue((refs / PIP.BASE_PIP).exists() and (refs / PIP.DOC_PIP).exists())
+        base = json.loads((refs / PIP.BASE_PIP).read_text(encoding="utf-8"))
+        self.assertEqual(base["modulo"], "pip")
+        self.assertEqual(base["estados_tabla_id"], "bcoSolicitudEstados")
+
+    def test_pip_estados_ignora_filas_sin_estado(self):
+        codigo, r = self.correr("pip-estados", "--headless", "--referencias", str(self.refs),
+                                "--pausa-ms", "0")
+        self.assertEqual(codigo, 0, r)
+        self.assertNotIn("Presentación electrónica", r["estados"])
+        self.assertEqual(len(r["estados"]), len(self.S.ESTADOS_PIP))
+
+    def test_pip_cargar_en_seco_no_guarda_nada(self):
+        codigo, salida = self.pip_preparar(self.datos())
+        self.assertEqual(codigo, 0, salida)
+        codigo, recibo = self.pip_cargar()
+        self.assertEqual(codigo, 0, recibo)
+        self.assertEqual([r["resultado"] for r in recibo["resultados"]], ["en-seco"] * 3)
+        self.assertEqual(self.servidor.estado.tramite["estados"], {})
+        # En seco el adjunto navega a la pagina de subida (Adjuntar), pero nunca Guarda:
+        # todos los POST son a la lista de adjuntos y nada queda cargado.
+        self.assertTrue(all(p == "/eva/cArchivosAdjuntos.do" for p in self.posts()))
+        self.assertNotIn("Plan de trabajo (PDF)", self.servidor.estado.tramite.get("cargado", {}))
+
+    def test_pip_cargar_guarda_relee_estados_y_no_aprieta_enviar(self):
+        self.pip_preparar(self.datos())
+        codigo, recibo = self.pip_cargar("--guardar")
+        self.assertEqual(codigo, 0, recibo)
+        self.assertEqual([r["resultado"] for r in recibo["resultados"]], ["guardado"] * 3)
+        estados = recibo["estados"]
+        self.assertEqual(estados["Datos del proyecto"], "Ok")
+        self.assertEqual(estados["Aspectos éticos"], "Ok")
+        self.assertEqual(estados["Plan de trabajo (PDF)"], "Ok")
+        self.assertEqual(self.servidor.estado.tramite["enviado"], False)
+        self.assertFalse(any("solicitudEnviar" in p for p in self.posts()))
+        # El datepicker simulado pisa con el mes actual si no se uso setDate.
+        cargado = self.servidor.estado.tramite["cargado"]["Datos del proyecto"]
+        self.assertEqual(cargado["fechaInicio"], ["09/2027", "09/2027"])
+        self.assertEqual(self.servidor.estado.tramite["cargado"]["Plan de trabajo (PDF)"]["archivo"], "plan.pdf")
+        # Segunda corrida: estado-pip.jsonl lo da por hecho (ya-estaba en el tramite).
+        _, recibo2 = self.pip_cargar("--guardar")
+
+    def test_pip_adjunta_segundo_slot_y_lo_marca_ok(self):
+        aval = self.dir / "aval.pdf"
+        aval.write_bytes(b"%PDF-1.4 aval")
+        datos = self.datos()
+        datos["secciones"] = [{"clave": "aval", "seccion": "Aval de la autoridad máxima (PDF firmado)",
+                               "archivo": {"ruta": str(aval), "tipo": "105"}}]
+        self.pip_preparar(datos)
+        codigo, recibo = self.pip_cargar("--guardar")
+        self.assertEqual((codigo, recibo["resultados"][0]["resultado"]), (0, "guardado"), recibo)
+        self.assertEqual(recibo["estados"]["Aval de la autoridad máxima (PDF firmado)"], "Ok")
+
+    def test_pip_guardado_silencioso_se_informa_como_no_guardado(self):
+        datos = self.datos()
+        datos["secciones"] = [datos["secciones"][0]]
+        datos["secciones"][0]["campos"]["tituloProyecto"] = "SILENCIO proyecto de prueba"
+        self.pip_preparar(datos)
+        codigo, recibo = self.pip_cargar("--guardar")
+        self.assertEqual((codigo, recibo["resultados"][0]["resultado"]), (1, "no-guardado"), recibo)
+        self.assertEqual(self.servidor.estado.tramite["estados"], {})
+
+    def test_pip_seccion_sin_enlace_se_informa_y_no_corta_la_tanda(self):
+        datos = self.datos()
+        datos["secciones"].append({"clave": "investigadores", "seccion": "Investigadores declarados",
+                                   "campos": {"x": "1"}})
+        self.pip_preparar(datos)
+        codigo, recibo = self.pip_cargar("--guardar")
+        resultados = {r["clave"]: r["resultado"] for r in recibo["resultados"]}
+        self.assertEqual(resultados["investigadores"], "error")
+        self.assertIn("no ofrece enlace", recibo["resultados"][-1]["detalle"])
+        self.assertEqual([r["resultado"] for r in recibo["resultados"]][:3], ["guardado"] * 3)
+
+    def test_pip_enviar_exige_ok_y_confirmacion_explicita(self):
+        self.pip_preparar(self.datos())
+        self.pip_cargar("--guardar")
+        # Sin confirmacion explicita: se niega aunque falten secciones.
+        with self.assertRaises(SystemExit):
+            self.correr("pip-enviar", "--headless", "--referencias", str(self.refs), "--pausa-ms", "0")
+        # Con confirmacion pero con estados pendientes: no envia.
+        codigo, r = self.correr("pip-enviar", "--confirmo-enviar", "--headless", "--referencias",
+                                str(self.refs), "--pausa-ms", "0")
+        self.assertEqual((codigo, r["enviado"]), (2, False), r)
+        # Todo en Ok (como lo dejaria el equipo al completar el resto): recien ahi envia.
+        for seccion in self.S.ESTADOS_PIP:
+            self.servidor.estado.tramite["estados"].setdefault(seccion, "Ok")
+        posts_antes = len(self.posts())
+        codigo, r = self.correr("pip-enviar", "--confirmo-enviar", "--headless", "--referencias",
+                                str(self.refs), "--pausa-ms", "0")
+        self.assertEqual((codigo, r["enviado"], r["recibido"]), (0, True, True), r)
+        self.assertTrue(any("solicitudEnviar" in p for p in self.posts()[posts_antes:]))
+
+    def test_pip_verificar_detecta_cambios_del_modulo(self):
+        codigo, informe = self.correr("pip-verificar", "--headless", "--referencias", str(self.refs),
+                                      "--auto", "--pausa-ms", "0")
+        self.assertEqual((codigo, informe["cambios"]), (0, []))
+        base_antes = (self.refs / PIP.BASE_PIP).read_text(encoding="utf-8")
+        self.servidor.estado.quitar_campo = "tituloProyecto"
+        # Sin --auto: los cambios se informan y el codigo es 2 (el contrato del cargador, que no usa ese campo, sigue ok).
+        codigo, informe = self.correr("pip-verificar", "--headless", "--referencias", str(self.refs),
+                                      "--pausa-ms", "0")
+        self.assertEqual(codigo, 2)
+        self.assertGreater(informe["resumen"]["alto"], 0)
+        self.assertEqual((self.refs / PIP.BASE_PIP).read_text(encoding="utf-8"), base_antes)
+        # Con --auto: un cambio no critico se adopta (codigo 0) y la linea base se regenera.
+        codigo, informe = self.correr("pip-verificar", "--headless", "--referencias", str(self.refs),
+                                      "--auto", "--pausa-ms", "0")
+        self.assertEqual(codigo, 0)
+        self.assertGreater(informe["resumen"]["alto"], 0)
+        self.assertNotEqual((self.refs / PIP.BASE_PIP).read_text(encoding="utf-8"), base_antes)
+        self.assertIn("actualizada", (self.refs / "historial-cambios.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

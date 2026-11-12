@@ -1,0 +1,2296 @@
+{
+ "capturado_en_utc": "2026-11-12T13:19:53+00:00",
+ "base": "https://si.conicet.gov.ar/",
+ "modulo": "pip",
+ "origen": "real",
+ "inicio_pip": "index.do",
+ "tramite_pantalla": "index.do?tramiteid=752068",
+ "tramite": "Postulante 11220260100119CO Abierto - 20/10/2026",
+ "estados_tabla_id": "",
+ "version_sigeva": "14.11.24.12",
+ "pantallas": {
+  "index.do": {
+   "ruta": "index.do",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cEnviarTramiteActionForm",
+     "action": "enviarTramite.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Enviar Presentación"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=3&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "archivoDinamico.do?email=true": "ruta prohibida (sesion, importacion o descarga)",
+    "archivoDinamico.do?tipoPdf=1": "ruta prohibida (sesion, importacion o descarga)",
+    "archivoDinamico.do?tipoPdf=2": "ruta prohibida (sesion, importacion o descarga)",
+    "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "index.do?tramiteid=752068": {
+   "ruta": "index.do?tramiteid=752068",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cEnviarTramiteActionForm",
+     "action": "enviarTramite.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Enviar Presentación"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=3&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "archivoDinamico.do?email=true": "ruta prohibida (sesion, importacion o descarga)",
+    "archivoDinamico.do?tipoPdf=1": "ruta prohibida (sesion, importacion o descarga)",
+    "archivoDinamico.do?tipoPdf=2": "ruta prohibida (sesion, importacion o descarga)",
+    "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "index.do?idGrupo=0&idMenu=0&idModulo=1": {
+   "ruta": "index.do?idGrupo=0&idMenu=0&idModulo=1",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cEnviarTramiteActionForm",
+     "action": "enviarTramite.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Enviar Presentación"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=3&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "archivoDinamico.do?email=true": "ruta prohibida (sesion, importacion o descarga)",
+    "archivoDinamico.do?tipoPdf=1": "ruta prohibida (sesion, importacion o descarga)",
+    "archivoDinamico.do?tipoPdf=2": "ruta prohibida (sesion, importacion o descarga)",
+    "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2": {
+   "ruta": "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+   "titulo": "SIGEVA",
+   "tipo": "formulario",
+   "formularios": [
+    {
+     "name": "cDatoAcademicoActionForm",
+     "action": "datoAcademico.do",
+     "metodo": "post",
+     "enctype": "multipart/form-data",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "usrAlta",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "fechaAlta",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "fechaPromocion",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "fechaIngreso",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "granAreaConocimiento",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "Gran área del conocimiento",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 6,
+       "opciones_hash": "e731b5910341"
+      },
+      {
+       "name": "disciplinaA",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "Disciplina Primaria",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 11,
+       "opciones_hash": "11ace9217d5a"
+      },
+      {
+       "name": "disciplinaB",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "Disciplina secundaria",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 29,
+       "opciones_hash": "61016c3af706"
+      },
+      {
+       "name": "disciplinaDesagregadaA",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 527,
+       "opciones_hash": "871a0acc290d"
+      },
+      {
+       "name": "disciplinaDesagregadaB",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 527,
+       "opciones_hash": "871a0acc290d"
+      },
+      {
+       "name": "campoAplicacionA",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 280,
+       "opciones_hash": "897c9c2660c3"
+      },
+      {
+       "name": "campoAplicacionB",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 280,
+       "opciones_hash": "897c9c2660c3"
+      },
+      {
+       "name": "especialidad",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Especialidad",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "temaPeriodo",
+       "tag": "textarea",
+       "tipo": "textarea",
+       "etiqueta": "Título del proyecto",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "resumenTemaPeriodo",
+       "tag": "textarea",
+       "tipo": "textarea",
+       "etiqueta": "Resumen del proyecto",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "palabraClave1",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Palabras clave",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "palabraClave2",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Palabras clave",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "palabraClave3",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Palabras clave",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "temaPeriodoIngles",
+       "tag": "textarea",
+       "tipo": "textarea",
+       "etiqueta": "Título del proyecto (inglés)",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "palabraClaveIngles1",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Palabras clave (inglés)",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "palabraClaveIngles2",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Palabras clave (inglés)",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "palabraClaveIngles3",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "Palabras clave (inglés)",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "campoDisciplinarJSON",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "clasificacionTemaJSON",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3": {
+   "ruta": "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+   "titulo": "SIGEVA",
+   "tipo": "formulario",
+   "formularios": [
+    {
+     "name": "cGrupoInvestigacionActionForm",
+     "action": "grupoInvestigacion.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "tipoGrupoRol",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": [],
+       "opciones_n": 5,
+       "opciones_hash": "2b5aff7b6cc4"
+      },
+      {
+       "name": "porcentajeDedicacion",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": []
+      },
+      {
+       "name": "seleccionadas",
+       "tag": "input",
+       "tipo": "checkbox",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 16,
+       "valores_opcion": [
+        "422795",
+        "431105",
+        "422703",
+        "422761",
+        "422763",
+        "431401",
+        "423121",
+        "431343",
+        "420837",
+        "422657",
+        "422729",
+        "423434",
+        "426964",
+        "431150",
+        "422707"
+       ]
+      },
+      {
+       "name": "listado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-6727902-p",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-6727902-s",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-6727902-o",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "actualizado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "grupoPersonaId",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "idPersona",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Ver",
+      "Borrar",
+      "Editar",
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "grupo.grupoInvestigacion.lista",
+     "orden": "6727902",
+     "cabecera": [
+      "",
+      "APELLIDO Y NOMBRE",
+      "ROL",
+      "%DEDIC(1)",
+      "LUGAR DE TRABAJO",
+      "CATEGORÍA",
+      "HAB (2)"
+     ]
+    }
+   ],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4": {
+   "ruta": "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+   "titulo": "CONVOCATORIAS ABIERTAS",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cSelConvPersonaActionForm",
+     "action": "selConvPersona.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "convocatoriaElegidaId",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "btnSubmit",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Postular"
+     ],
+     "botones_name": []
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "listaTramitePresentacion.do?idGrupo=3&idMenu=2712&idModulo=4",
+    "selConvPersona.do?idGrupo=0&idMenu=790&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1": {
+   "ruta": "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "",
+     "action": "index.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [],
+     "botones": [
+      "Salir"
+     ],
+     "botones_name": []
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4": {
+   "ruta": "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4",
+   "titulo": "CONVOCATORIAS ABIERTAS",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cSelConvPersonaActionForm",
+     "action": "selConvPersona.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "convocatoriaElegidaId",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "btnSubmit",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Postular"
+     ],
+     "botones_name": []
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "listaTramitePresentacion.do?idGrupo=3&idMenu=2712&idModulo=4",
+    "selConvPersona.do?idGrupo=0&idMenu=790&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1": {
+   "ruta": "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "",
+     "action": "cArchivosAdjuntos.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "tipoArchivo",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Adjuntar"
+     ],
+     "botones_name": [
+      "adjuntarSubmit"
+     ]
+    },
+    {
+     "name": "",
+     "action": "cArchivosAdjuntos.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "tipoArchivo",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Adjuntar"
+     ],
+     "botones_name": [
+      "adjuntarSubmit"
+     ]
+    },
+    {
+     "name": "cArchivosAdjuntosActionForm",
+     "action": "cArchivosAdjuntos.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Salir"
+     ],
+     "botones_name": [
+      "action"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "",
+     "orden": "",
+     "cabecera": [
+      "TIPOS DE ARCHIVOS A ADJUNTAR",
+      "ARCHIVO ADJUNTO",
+      "FECHA DE ALTA",
+      ""
+     ]
+    }
+   ],
+   "navegacion": [
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2": {
+   "ruta": "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+   "titulo": "SIGEVA",
+   "tipo": "formulario",
+   "formularios": [
+    {
+     "name": "cAspectosEticosActionForm",
+     "action": "aspectoEtico.do",
+     "metodo": "post",
+     "enctype": "multipart/form-data",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "farmacologicoTecnologico",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "clinicoQuirurgicoBasico",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "epidemiologicoSocialPsico",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "equipamientoMedico",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "diagnosticoImagenesRadiacion",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "historiaClinica",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "muestraBiologica",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "estudioComunidadAborigen",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "informeComiteLugar",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "0",
+        "1"
+       ]
+      },
+      {
+       "name": "theFile",
+       "tag": "input",
+       "tipo": "file",
+       "etiqueta": "Adjuntar documento",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2": {
+   "ruta": "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+   "titulo": "SIGEVA",
+   "tipo": "formulario",
+   "formularios": [
+    {
+     "name": "cSeguridadProyectoActionForm",
+     "action": "seguridadProyecto.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "tareasDeCampo",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "1",
+        "0"
+       ]
+      },
+      {
+       "name": "matriculadoEnHigieneYSeguridad",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "comiteDeSeguridadOBioseguridad",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "expuestoARiesgosFisicos",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "sustanciasQuimicas",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "sustanciasQuimicasDesc",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "campanasDeExtraccion",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "nivelBioseguridad",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "tipoProyectoNivelBioseguridadId",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": [],
+       "opciones_n": 5,
+       "opciones_hash": "abcd65b264e0"
+      },
+      {
+       "name": "riesgoBiologicoComiteSeguridad",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "inmunizacionOVacunacion",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "advertenciasOTrabajosDiferenciados",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "sistemaDeGestionDeResiduos",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 3,
+       "valores_opcion": [
+        "1",
+        "0",
+        "2"
+       ]
+      },
+      {
+       "name": "capacitacionEnPrevencion",
+       "tag": "input",
+       "tipo": "radio",
+       "etiqueta": "",
+       "obligatorio": true,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 2,
+       "valores_opcion": [
+        "1",
+        "0"
+       ]
+      },
+      {
+       "name": "cantidadPersonas",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "metrosCuadrados",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "aspectoEtico.do?idGrupo=2&idMenu=2698&idModulo=2",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "seguridadProyecto.do?idGrupo=2&idMenu=2699&idModulo=2",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3": {
+   "ruta": "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cRecursoFinancieroActionForm",
+     "action": "recursoFinanciero.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "montos",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 24,
+       "valores_opcion": []
+      },
+      {
+       "name": "ubicaciones",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 24,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "",
+     "orden": "",
+     "cabecera": [
+      "",
+      "RUBRO",
+      "2026",
+      "2027",
+      "2028",
+      "TOTAL"
+     ]
+    }
+   ],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3": {
+   "ruta": "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cRecursoFinancieroActionForm",
+     "action": "recursoFinancieroAdicional.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "montos",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": []
+      },
+      {
+       "name": "ubicaciones",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "",
+     "orden": "",
+     "cabecera": [
+      "",
+      "RUBRO",
+      "2026",
+      "2027",
+      "2028",
+      "TOTAL"
+     ]
+    }
+   ],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3": {
+   "ruta": "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cFuentesFinanciamientoActionForm",
+     "action": "fuentesFinanciamientoAction.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "otrosFinanciamientos",
+       "tag": "input",
+       "tipo": "checkbox",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 10,
+       "valores_opcion": [
+        "1255716",
+        "739940",
+        "199709",
+        "1255719",
+        "824791",
+        "1255725",
+        "1255717",
+        "1326174",
+        "493898",
+        "1538942"
+       ]
+      },
+      {
+       "name": "listado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 10,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-998727-p",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-998727-s",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-998727-o",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "actualizado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "grupo.fuentesFinanciamiento.lista",
+     "orden": "998727",
+     "cabecera": [
+      "",
+      "APELLIDO Y NOMBRE",
+      "TÍTULO",
+      "TIPO DE FINANCIAMIENTO",
+      "FECHA DESDE",
+      "FECHA HASTA",
+      "MONTO",
+      "SEL."
+     ]
+    }
+   ],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do",
+    "fuentesFinanciamientoAction.do?idGrupo=1&idMenu=2709&idModulo=3",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "recursoFinanciero.do?idGrupo=1&idMenu=2708&idModulo=3",
+    "recursoFinancieroAdicional.do?idGrupo=1&idMenu=2710&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)",
+    "financiamientoCYTProyectoFuente.do?accion=editar&id=N&tipoFinanciamientoId=5": "accion sobre registros (editar)",
+    "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=11": "accion sobre registros (ver)",
+    "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=5": "accion sobre registros (ver)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "cArchivosAdjuntos.do?idGrupo=0&idMenu=3&idModulo=1": {
+   "ruta": "cArchivosAdjuntos.do?idGrupo=0&idMenu=3&idModulo=1",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "",
+     "action": "cArchivosAdjuntos.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "tipoArchivo",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Adjuntar"
+     ],
+     "botones_name": [
+      "adjuntarSubmit"
+     ]
+    },
+    {
+     "name": "",
+     "action": "cArchivosAdjuntos.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "tipoArchivo",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Adjuntar"
+     ],
+     "botones_name": [
+      "adjuntarSubmit"
+     ]
+    },
+    {
+     "name": "cArchivosAdjuntosActionForm",
+     "action": "cArchivosAdjuntos.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Salir"
+     ],
+     "botones_name": [
+      "action"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "",
+     "orden": "",
+     "cabecera": [
+      "TIPOS DE ARCHIVOS A ADJUNTAR",
+      "ARCHIVO ADJUNTO",
+      "FECHA DE ALTA",
+      ""
+     ]
+    }
+   ],
+   "navegacion": [
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "grupoInvestigacion.do": {
+   "ruta": "grupoInvestigacion.do",
+   "titulo": "SIGEVA",
+   "tipo": "formulario",
+   "formularios": [
+    {
+     "name": "cGrupoInvestigacionActionForm",
+     "action": "grupoInvestigacion.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "tipoGrupoRol",
+       "tag": "select",
+       "tipo": "select-one",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": [],
+       "opciones_n": 5,
+       "opciones_hash": "2b5aff7b6cc4"
+      },
+      {
+       "name": "porcentajeDedicacion",
+       "tag": "input",
+       "tipo": "text",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": []
+      },
+      {
+       "name": "seleccionadas",
+       "tag": "input",
+       "tipo": "checkbox",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 16,
+       "valores_opcion": [
+        "422795",
+        "431105",
+        "422703",
+        "422761",
+        "422763",
+        "431401",
+        "423121",
+        "431343",
+        "420837",
+        "422657",
+        "422729",
+        "423434",
+        "426964",
+        "431150",
+        "422707"
+       ]
+      },
+      {
+       "name": "listado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 15,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-6727902-p",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-6727902-s",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-6727902-o",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "actualizado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "grupoPersonaId",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "idPersona",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Ver",
+      "Borrar",
+      "Editar",
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "grupo.grupoInvestigacion.lista",
+     "orden": "6727902",
+     "cabecera": [
+      "",
+      "APELLIDO Y NOMBRE",
+      "ROL",
+      "%DEDIC(1)",
+      "LUGAR DE TRABAJO",
+      "CATEGORÍA",
+      "HAB (2)"
+     ]
+    }
+   ],
+   "navegacion": [
+    "cArchivosAdjuntos.do?idGrupo=0&idMenu=2696&idModulo=1",
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "instructivoProyectoNavOper.do?idGrupo=0&idMenu=2693&idModulo=1",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4",
+    "selConvPersona.do?idGrupo=3&idMenu=795&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "selConvPersona.do?idGrupo=0&idMenu=790&idModulo=3": {
+   "ruta": "selConvPersona.do?idGrupo=0&idMenu=790&idModulo=3",
+   "titulo": "CONVOCATORIAS ABIERTAS",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cSelConvPersonaActionForm",
+     "action": "selConvPersona.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "convocatoriaElegidaId",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "btnSubmit",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Postular"
+     ],
+     "botones_name": []
+    }
+   ],
+   "tablas": [],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "listaTramitePresentacion.do?idGrupo=3&idMenu=2712&idModulo=4": {
+   "ruta": "listaTramitePresentacion.do?idGrupo=3&idMenu=2712&idModulo=4",
+   "titulo": "PRESENTACIONES",
+   "tipo": "menu",
+   "formularios": [],
+   "tablas": [],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "index.do?tramiteid=113849",
+    "index.do?tramiteid=172676",
+    "index.do?tramiteid=201270",
+    "index.do?tramiteid=221235",
+    "index.do?tramiteid=254677",
+    "index.do?tramiteid=271322",
+    "index.do?tramiteid=345106",
+    "index.do?tramiteid=351646",
+    "index.do?tramiteid=388692",
+    "index.do?tramiteid=411458",
+    "index.do?tramiteid=45130",
+    "index.do?tramiteid=459437",
+    "index.do?tramiteid=467972",
+    "index.do?tramiteid=497947",
+    "index.do?tramiteid=502897",
+    "index.do?tramiteid=506372",
+    "index.do?tramiteid=554327",
+    "index.do?tramiteid=565915",
+    "index.do?tramiteid=605880",
+    "index.do?tramiteid=606011",
+    "index.do?tramiteid=606115",
+    "index.do?tramiteid=612269",
+    "index.do?tramiteid=638362",
+    "index.do?tramiteid=650422",
+    "index.do?tramiteid=650596",
+    "index.do?tramiteid=650624",
+    "index.do?tramiteid=662116",
+    "index.do?tramiteid=666006",
+    "index.do?tramiteid=692776",
+    "index.do?tramiteid=692934",
+    "index.do?tramiteid=692957",
+    "index.do?tramiteid=718354",
+    "index.do?tramiteid=718513",
+    "index.do?tramiteid=718538",
+    "index.do?tramiteid=720392",
+    "index.do?tramiteid=752068",
+    "index.do?tramiteid=8447",
+    "index.do?tramiteid=98615",
+    "listaTramitePresentacion.do?idGrupo=3&idMenu=2712&idModulo=4",
+    "selConvPersona.do?idGrupo=0&idMenu=790&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  },
+  "fuentesFinanciamientoAction.do": {
+   "ruta": "fuentesFinanciamientoAction.do",
+   "titulo": "SIGEVA",
+   "tipo": "menu",
+   "formularios": [
+    {
+     "name": "cFuentesFinanciamientoActionForm",
+     "action": "fuentesFinanciamientoAction.do",
+     "metodo": "post",
+     "enctype": "application/x-www-form-urlencoded",
+     "campos": [
+      {
+       "name": "org.apache.struts.taglib.html.TOKEN",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "otrosFinanciamientos",
+       "tag": "input",
+       "tipo": "checkbox",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": true,
+       "datepicker": false,
+       "cantidad": 10,
+       "valores_opcion": [
+        "1255716",
+        "739940",
+        "199709",
+        "1255719",
+        "824791",
+        "1255725",
+        "1255717",
+        "1326174",
+        "493898",
+        "1538942"
+       ]
+      },
+      {
+       "name": "listado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 10,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-998727-p",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-998727-s",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "d-998727-o",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      },
+      {
+       "name": "actualizado",
+       "tag": "input",
+       "tipo": "hidden",
+       "etiqueta": "",
+       "obligatorio": false,
+       "visible": false,
+       "datepicker": false,
+       "cantidad": 1,
+       "valores_opcion": []
+      }
+     ],
+     "botones": [
+      "Guardar",
+      "Salir"
+     ],
+     "botones_name": [
+      "btnSubmit"
+     ]
+    }
+   ],
+   "tablas": [
+    {
+     "id": "grupo.fuentesFinanciamiento.lista",
+     "orden": "998727",
+     "cabecera": [
+      "",
+      "APELLIDO Y NOMBRE",
+      "TÍTULO",
+      "TIPO DE FINANCIAMIENTO",
+      "FECHA DESDE",
+      "FECHA HASTA",
+      "MONTO",
+      "SEL."
+     ]
+    }
+   ],
+   "navegacion": [
+    "datoAcademico.do?idGrupo=2&idMenu=2697&idModulo=2",
+    "fuentesFinanciamientoAction.do",
+    "grupoInvestigacion.do?idGrupo=1&idMenu=2707&idModulo=3",
+    "index.do?idGrupo=0&idMenu=0&idModulo=1",
+    "listaTramitePresentacion.do?idGrupo=3&idMenu=2712&idModulo=4",
+    "selConvPersona.do?idGrupo=0&idMenu=790&idModulo=3",
+    "selConvPersona.do?idGrupo=3&idMenu=2711&idModulo=4"
+   ],
+   "acciones": {
+    "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)",
+    "financiamientoCYTProyectoFuente.do?accion=editar&id=N&tipoFinanciamientoId=5": "accion sobre registros (editar)",
+    "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=11": "accion sobre registros (ver)",
+    "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=5": "accion sobre registros (ver)",
+    "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
+   },
+   "iframes": 0
+  }
+ },
+ "omitidos": {
+  "salir.jsp": "ruta prohibida (sesion, importacion o descarga)",
+  "recusacion.do?action=inicio&idGrupo=2&idMenu=2701&idModulo=2": "accion sobre registros (inicio)",
+  "archivoDinamico.do?tipoPdf=1": "ruta prohibida (sesion, importacion o descarga)",
+  "archivoDinamico.do?tipoPdf=2": "ruta prohibida (sesion, importacion o descarga)",
+  "archivoDinamico.do?email=true": "ruta prohibida (sesion, importacion o descarga)",
+  "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=5": "accion sobre registros (ver)",
+  "financiamientoCYTProyectoFuente.do?accion=editar&id=N&tipoFinanciamientoId=5": "accion sobre registros (editar)",
+  "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)",
+  "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=11": "accion sobre registros (ver)"
+ },
+ "errores": {},
+ "completo": true
+}

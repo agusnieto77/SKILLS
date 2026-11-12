@@ -21,6 +21,22 @@ from urllib.parse import parse_qs, urlsplit
 VERSION = "14.11.24.6"
 TABLAS = {"articulo": ("articulo", "3997137"), "evento": ("congresoPublicado", "8106305"),
           "capitulo": ("capituloLibro", "4551421"), "libro": ("libro", "148512")}
+# Modulo de convocatorias: 11 estados como el PIP real. "Investigadores declarados" no
+# ofrece enlace: se resuelve en el Banco de Datos, no desde el tramite.
+ESTADOS_PIP = {
+    "Datos del proyecto": {"ruta": "solicitudDatosProyecto.do", "etiqueta": "Completar"},
+    "Aspectos éticos": {"ruta": "solicitudAspectosEticos.do", "etiqueta": "Completar"},
+    "Seguridad": {"ruta": "solicitudSeguridad.do", "etiqueta": "Completar"},
+    "Recusación": {"ruta": "solicitudRecusacion.do", "etiqueta": "Completar"},
+    "Grupo de Investigación": {"ruta": "solicitudGrupo.do", "etiqueta": "Cargar"},
+    "Financiamiento Básico": {"ruta": "solicitudFinanciamientoBasico.do", "etiqueta": "Cargar"},
+    "Financiamiento Adicional": {"ruta": "solicitudFinanciamientoAdicional.do", "etiqueta": "Cargar"},
+    "Otras Fuentes de Financiamiento": {"ruta": "solicitudOtrasFuentes.do", "etiqueta": "Cargar"},
+    "Investigadores declarados": {"etiqueta": "—"},
+    "Plan de trabajo (PDF)": {"ruta": "cArchivosAdjuntos.do", "etiqueta": "Adjuntar"},
+    "Aval de la autoridad máxima (PDF firmado)": {"ruta": "cArchivosAdjuntos.do", "etiqueta": "Adjuntar"},
+}
+CODIGO_TRAMITE = "11220260100119CO"
 NUEVO = {"articulo": "bcoPrecargarArticulo.do?action=Nuevo",
          "evento": "bcoProduccionListaPublicacionCongreso.do?action=Nuevo&amp;publicado=1",
          "capitulo": "bcoProduccionListaPublicacionCapituloLibro.do?action=Nuevo",
@@ -267,8 +283,15 @@ class Estado:
         # Que hace "Modificar": "version-nueva" (id nuevo, retira el viejo), "duplicar" (deja los dos)
         # o "en-el-lugar" (mismo id). Los tres se vieron en SIGEVA segun pantalla y version.
         self.modo_modificar = "version-nueva"
+        # Modulo de convocatorias: estados del tramite y envio (irreversible).
+        self.tramite: dict = {"estados": {}, "enviado": False, "enviable": True}
         self.lock = threading.Lock()
         self.proximo_id = 100  # como SIGEVA: un id borrado nunca se reutiliza
+
+    def completar_seccion(self, seccion: str, datos: dict | None = None) -> None:
+        self.tramite["estados"][seccion] = "Ok"
+        if datos:
+            self.tramite.setdefault("cargado", {})[seccion] = datos
 
     def alta(self, tipo: str, datos: dict) -> int:
         with self.lock:
@@ -312,6 +335,74 @@ def _lista_premios(estado: Estado) -> bytes:
                    "<input type='submit' value='Salir'></form>", "Premios")
 
 
+def _tabla_estados(estado: "Estado") -> str:
+    """Tabla de estados del tramite: 11 items como el PIP real; el cargador no hardcodea la cantidad."""
+    filas = []
+    for seccion, info in ESTADOS_PIP.items():
+        estado_actual = estado.tramite["estados"].get(seccion, "Sin Datos")
+        enlace = (f"<a href='{info['ruta']}'>{info['etiqueta']}</a>" if info.get("ruta") and estado_actual != "Ok" else info["etiqueta"])
+        clase = "ok" if estado_actual == "Ok" else "sin-datos"
+        filas.append(f"<tr><td>{seccion}</td><td class='{clase}'>{estado_actual}</td><td>{enlace}</td></tr>")
+    filas.append("<tr><td>Presentación electrónica</td><td><a href='archivoDinamico.do?tipoPdf=1'>PDF</a></td></tr>")
+    return ("<table id='bcoSolicitudEstados'><thead><tr><th>SECCIÓN</th><th>ESTADO</th><th>ACCIÓN</th></tr></thead>"
+            f"<tbody>{''.join(filas)}</tbody></table>")
+
+
+def _tramite(estado: "Estado") -> bytes:
+    boton_enviar = ("<input type='submit' name='btnSubmit' value='ENVIAR PRESENTACIÓN'>" if estado.tramite["enviable"] else "")
+    return _pagina(f"<div class='titulo'>Solicitud PIP 2026-2028 (11220260100119CO)</div>"
+                   f"<form method='post' action='/eva/solicitudEnviar.do'>{_tabla_estados(estado)}{boton_enviar}</form>",
+                   "Solicitud")
+
+
+def _form_pip(seccion: str, ruta: str, cuerpo: str) -> bytes:
+    return _pagina(f"<form method='post' enctype='multipart/form-data' action='{ruta}'><input type='hidden' name='seccion' value='{seccion}'>"
+                   f"<table>{cuerpo}</table><input type='submit' name='btnSubmit' value='Guardar'>"
+                   "<input type='submit' name='btnSubmit' value='Volver'></form>", seccion)
+
+
+def form_datos_proyecto(valores: dict | None = None) -> bytes:
+    v = valores or {}
+    campos = "".join([
+        _fila("Título del proyecto:*", f"<input name='tituloProyecto' value='{html.escape(v.get('tituloProyecto', ''))}'>"),
+        _fila("Resumen:*", "<textarea name='resumenProyecto'></textarea>"),
+        _fila("Fecha de inicio prevista:*", "<input name='fechaInicio' class='calendar-year-month hasDatepicker'>"
+                                            "<input type='hidden' name='fechaInicio' value=''>"),
+    ])
+    return _form_pip("Datos del proyecto", "/eva/solicitudDatosProyecto.do", campos)
+
+
+def form_aspectos() -> bytes:
+    campos = "".join([
+        _fila("¿Requiere dictamen de comité de ética?:*",
+              "<input type='radio' name='usaComiteEtica' value='1'>Sí <input type='radio' name='usaComiteEtica' value='2'>No"),
+        _fila("Fundamentación:*", "<textarea name='fundamentacionEtica'></textarea>"),
+    ])
+    return _form_pip("Aspectos éticos", "/eva/solicitudAspectosEticos.do", campos)
+
+
+SECCIONES_ADJUNTO = {"1": "Plan de trabajo (PDF)", "105": "Aval de la autoridad máxima (PDF firmado)"}
+
+
+def _lista_adjuntos() -> bytes:
+    return _pagina("".join(
+        f"<form method='post' action='/eva/cArchivosAdjuntos.do'>"
+        f"<input type='hidden' name='tipoArchivo' value='{t}'>"
+        f"<input type='submit' name='btnSubmit' value='Adjuntar'></form>"
+        for t in ("1", "105")), "Adjuntos")
+
+
+def _form_upload_adjunto(seccion: str, tipo: str) -> bytes:
+    campos = "".join([
+        _fila("Archivo:*", "<input type='file' name='theFile'>"),
+    ])
+    return _pagina(f"<form method='post' enctype='multipart/form-data' action='/eva/cArchivosAdjuntos.do'>"
+                   f"<input type='hidden' name='seccion' value='{seccion}'>"
+                   f"<input type='hidden' name='tipoArchivo' value='{tipo}'>"
+                   f"<table>{campos}</table><input type='submit' name='btnSubmit' value='Guardar'>"
+                   "<input type='submit' name='btnSubmit' value='Volver'></form>", seccion)
+
+
 def crear_manejador(estado: Estado):
     class Manejador(BaseHTTPRequestHandler):
         def log_message(self, *args):  # silencio en las pruebas
@@ -338,9 +429,29 @@ def crear_manejador(estado: Estado):
             ruta = partes.path
             if ruta == "/intranet/index.htm":
                 return self._responder(_pagina(
-                    "<script>function redirect(id){ if (id === 96) location.href = '/eva/indexBancoDatos.do'; }</script>"
+                    "<script>function redirect(id){ if (id === 96) location.href = '/eva/indexBancoDatos.do';"
+                    " if (id === 72) location.href = '/eva/presentacionInicio.do'; }</script>"
                     "<div style='display:none'><a href='#' onclick='redirect(96)'>Usuario banco de datos de actividades de CyT</a>"
                     "<a href='#' onclick='redirect(72)'>Usuario presentación/solicitud</a></div>", "Intranet"))
+            if ruta == "/eva/presentacionInicio.do":
+                return self._responder(_pagina(
+                    "<a href='selConvPersona.do?idModulo=4&idGrupo=3&idMenu=2711'>CONVOCATORIAS</a> "
+                    "<a href='selConvPersona.do?&idMenu=790&idModulo=3&idGrupo=0'>CONVOCATORIAS ABIERTAS</a> "
+                    "<a href='listaTramitePresentacion.do?&idMenu=2712&idModulo=4&idGrupo=3'>MIS POSTULACIONES</a> "
+                    "<a href='salir.jsp'>Salir</a>", "Principal"))
+            if ruta == "/eva/selConvPersona.do":
+                return self._responder(_pagina(
+                    "<div class='card-convocatoria'>PIP 2026-2028 - Grupo de Investigación "
+                    f"({CODIGO_TRAMITE}) <button type='button' onclick='return postular(220202601);'>POSTULARME</button></div> "
+                    "<a href='presentacionInicio.do'>Volver</a>", "Convocatorias"))
+            if ruta == "/eva/listaTramitePresentacion.do":
+                return self._responder(_pagina(
+                    "<table id='bcoListaTramites'><thead><tr><th><a href='listaTramitePresentacion.do?d-999-s=1'>TIPO</a></th>"
+                    "<th>CÓDIGO</th><th>ESTADO</th></tr></thead><tbody><tr>"
+                    f"<td>PROYECTO PIP 2026-2028 GI Postulante {CODIGO_TRAMITE} Abierto - 20/10/2026</td>"
+                    "<td><a href='index.do?tramiteid=7'>Abrir</a></td></tr></tbody></table>", "Mis postulaciones"))
+            if ruta == "/eva/index.do" and q.get("tramiteid") == ["7"]:
+                return self._responder(_tramite(estado))
             if ruta == "/eva/indexBancoDatos.do":
                 return self._responder(_pagina(
                     "<a href='bcoProduccionListaPublicacion.do?idModulo=6&idGrupo=6&idMenu=1466&prod=cientifica'>Artículos</a> "
@@ -379,6 +490,12 @@ def crear_manejador(estado: Estado):
                 if q.get("accion") == ["editar"]:
                     r = next(x for x in estado.registros["premio"] if str(x["id"]) == q["id"][0])
                     return self._responder(form_premio(r))
+            if ruta == "/eva/solicitudDatosProyecto.do":
+                return self._responder(form_datos_proyecto())
+            if ruta == "/eva/solicitudAspectosEticos.do":
+                return self._responder(form_aspectos())
+            if ruta == "/eva/cArchivosAdjuntos.do":
+                return self._responder(_lista_adjuntos())
             return self._responder(_pagina("No encontrado"), 404)
 
         def _formulario(self) -> dict[str, list]:
@@ -395,7 +512,9 @@ def crear_manejador(estado: Estado):
                     datos.setdefault(nombre, []).append({"archivo": archivo, "bytes": len(carga)} if archivo is not None
                                                         else carga.decode("iso-8859-1"))
                 return datos
-            return {k: v for k, v in parse_qs(cuerpo.decode("iso-8859-1"), keep_blank_values=True).items()}
+            # Los formularios viajan en el charset del documento (ISO-8859-1), como los envia Chromium.
+            return {k: v for k, v in parse_qs(cuerpo.decode("iso-8859-1"), keep_blank_values=True,
+                                             encoding="iso-8859-1").items()}
 
         def do_POST(self):
             estado.peticiones.append(("POST", self.path))
@@ -469,6 +588,40 @@ def crear_manejador(estado: Estado):
             if ruta == "/eva/bcoPremio.do" and boton == "Guardar":
                 estado.alta("premio", {k: f[k][0] for k in ("premio", "tipoPremio", "anio", "institucionOtorgante")})
                 return self._redirigir("/eva/bcoPremioLista.do?idModulo=7&idGrupo=7&idMenu=1470")
+            if ruta == "/eva/solicitudDatosProyecto.do" and boton == "Guardar":
+                titulo = f["tituloProyecto"][0]
+                if "SILENCIO" in titulo:
+                    # Guardar que vuelve sin guardar nada y sin error (como el BD con PDF grande).
+                    return self._responder(_tramite(estado))
+                estado.completar_seccion("Datos del proyecto", {k: f.get(k, []) for k in f if k != "btnSubmit"})
+                return self._redirigir("/eva/index.do?tramiteid=7")
+            if ruta == "/eva/solicitudAspectosEticos.do" and boton == "Guardar":
+                if not f.get("usaComiteEtica") or f["usaComiteEtica"][0] not in ("1", "2"):
+                    return self._responder(_pagina(
+                        "Debe seleccionar si requiere dictamen de comit&eacute; de &eacute;tica"))
+                estado.completar_seccion("Aspectos éticos", {k: f.get(k, []) for k in f if k != "btnSubmit"})
+                return self._redirigir("/eva/index.do?tramiteid=7")
+            if ruta == "/eva/cArchivosAdjuntos.do" and boton == "Adjuntar":
+                tipo = (f.get("tipoArchivo") or [""])[0]
+                if tipo not in SECCIONES_ADJUNTO:
+                    return self._responder(_pagina("Tipo de adjunto desconocido"), 400)
+                return self._responder(_form_upload_adjunto(SECCIONES_ADJUNTO[tipo], tipo))
+            if ruta == "/eva/cArchivosAdjuntos.do" and boton == "Guardar":
+                archivo = (f.get("theFile") or [{}])[0]
+                nombre = archivo.get("archivo") or ""
+                if not isinstance(archivo, dict) or not nombre:
+                    return self._responder(_pagina("Debe adjuntar el archivo"))
+                if "GRANDE" in nombre or archivo.get("bytes", 0) > 35 * 1024 * 1024:
+                    return self._responder(_pagina("El archivo supera el tama&ntilde;o m&aacute;ximo permitido"))
+                estado.completar_seccion(f["seccion"][0], {"archivo": nombre, "bytes": archivo.get("bytes")})
+                return self._redirigir("/eva/index.do?tramiteid=7")
+            if ruta == "/eva/solicitudEnviar.do" and boton == "ENVIAR PRESENTACIÓN":
+                pendientes = [s for s, v in estado.tramite["estados"].items() if v != "Ok"]
+                faltantes = [s for s in ESTADOS_PIP if s not in estado.tramite["estados"]]
+                if pendientes or faltantes:
+                    return self._responder(_pagina("Debe completar todas las secciones antes de enviar"))
+                estado.tramite["enviado"] = True
+                return self._responder(_pagina("Solicitud enviada. Guardá el comprobante"))
             return self._responder(_pagina("Accion desconocida"), 400)
 
     return Manejador

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0 — 2026-11-12
+
+- Módulo de convocatorias (presentación/solicitud, rol 72): nuevos comandos `pip-mapear`, `pip-verificar`,
+  `pip-estados`, `pip-preparar`, `pip-cargar` y `pip-enviar`, con la misma disciplina del Banco de Datos
+  (solo lectura para el mapeo, en seco por defecto, tandas cortas, verificación previa y éxito por relectura).
+  Guía nueva [pip](references/pip.md) y línea base PIP separada (`mapa-pip-base.json`, con `origen`
+  real/simulador: una línea base del simulador no habilita trabajos contra el sitio real).
+- `pip-cargar` nunca aprieta ENVIAR PRESENTACIÓN: éxito = la sección vuelve a "Ok" en la tabla de estados
+  (cantidad de ítems leída de la tabla, nada hardcodeado). `pip-enviar --confirmo-enviar` es la única vía
+  asistida de envío, aparte y con todos los estados en "Ok"; la vía preferida sigue siendo el botón a mano.
+- `pip-preparar` valida `pip.json` sin red: tramite, secciones con nombre exacto de la tabla, campos
+  sin vacíos (no se estiman), adjuntos existentes, PDF y dentro del límite de tamaño (el aval es un PDF
+  firmado: solo subida, nunca generación).
+- `sigeva_mapa`: excepciones por módulo (`IDS_ESTRUCTURALES_EXTRA`, `ACCIONES_SEGURAS_EXTRA`) para que el
+  recorrido del módulo trate `tramiteId` como estructura y siga las acciones de alta propias de convocatorias.
+- Simulador con pantallas mock del trámite (tabla de 11 estados, formularios con datepicker, radios y
+  adjuntos con límite, Guardar silencioso, botón ENVIAR que exige todo en "Ok") y pruebas unitarias y de
+  punta a punta del módulo. `Sesion.iniciar(rol=)` para entrar por presentación; `VERSION` corregida a 1.2.0.
+
 ## 1.1.0 — 2026-10-26
 
 - Skill renombrada de `sigeva-banco-datos` a `sigeva-bd`.

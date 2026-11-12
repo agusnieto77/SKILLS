@@ -12,6 +12,10 @@ Uso:
                                      [--guardar] [--limite 5] [--claves K1 K2] [--confirmar]
     python sigeva_bd.py mapear       --env-file .env --headless [--aceptar]
     python sigeva_bd.py verificar    --env-file .env --headless [--auto | --aceptar]
+    python sigeva_bd.py pip-mapear   --env-file .env --headless [--tramite COD] [--aceptar]
+    python sigeva_bd.py pip-preparar --datos pip.json [--salida pip-listos.json]
+    python sigeva_bd.py pip-cargar   --datos pip-listos.json [--guardar] [--tramite COD]
+    python sigeva_bd.py pip-enviar   --tramite COD --confirmo-enviar   # mejor: apretarlo a mano
 
 Todo lo que entra al Banco de Datos es una declaracion jurada. Por eso:
 - `cargar` llena los formularios en seco por defecto: solo guarda con `--guardar`.
@@ -39,7 +43,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
 
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 BASE_DEFECTO = "https://si.conicet.gov.ar"
 ROL_BANCO_DATOS = 96
 RUTAS = {
@@ -412,7 +416,7 @@ def bib_a_registros(entradas: list[dict], idioma_defecto: str | None = None) -> 
 def cargar_config(ruta: str | None) -> dict:
     datos = json.loads(Path(ruta).read_text(encoding="utf-8")) if ruta else {}
     config = {
-        "base": BASE_DEFECTO, "rol_banco_datos": ROL_BANCO_DATOS, "persona_id": "",
+        "base": BASE_DEFECTO, "rol_banco_datos": ROL_BANCO_DATOS, "rol_presentacion": 72, "persona_id": "",
         "declarante": {"apellido": "", "nombre": ""}, "idioma_defecto": None,
         "area_conocimiento": {"campo": "", "subcampo": ""}, "tablas": dict(TABLAS_DEFECTO),
     }
@@ -900,7 +904,9 @@ class Sesion:
             log(f"    no pude guardar la captura: {str(e).splitlines()[0][:80]}")
         return str(ruta)
 
-    def iniciar(self) -> None:
+    def iniciar(self, rol: int | None = None) -> None:
+        """Entra al modulo que corresponda: 96 Banco de Datos (defecto) o 72 presentacion/solicitud."""
+        rol = int(rol or self.config["rol_banco_datos"])
         page = self.page
         page.goto(self.url(RUTAS["intranet"]), wait_until="domcontentloaded", timeout=60_000)
         selector_rol = 'a[onclick*="redirect("]'
@@ -922,12 +928,13 @@ class Sesion:
                     raise SystemExit("No detecte la sesion iniciada.") from None
             log("Sesion iniciada.")
         page.goto(self.url(RUTAS["intranet"]), wait_until="domcontentloaded")
-        rol = int(self.config["rol_banco_datos"])
+        nombre_rol = ("Usuario de Banco de Datos de Actividades de CyT" if rol == ROL_BANCO_DATOS
+                      else "Usuario presentación/solicitud")
         if not page.locator(f'a[onclick*="redirect({rol})"]').count():
-            raise SystemExit(f"La cuenta no tiene el rol {rol} (Usuario de Banco de Datos de Actividades de CyT).")
+            raise SystemExit(f"La cuenta no tiene el rol {rol} ({nombre_rol}).")
         page.evaluate(f"redirect({rol})")
         page.wait_for_url("**/eva/**", timeout=60_000)
-        log("Dentro del Banco de Datos.")
+        log("Dentro de SIGEVA" + (" (presentacion/solicitud)." if rol != ROL_BANCO_DATOS else " (Banco de Datos)."))
 
     def _ingresar(self, usuario: str, clave: str, selector_rol: str) -> None:
         """Ingreso por el CAS distinguiendo "clave rechazada" de "CAS colgado".
@@ -2313,12 +2320,40 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--mapa", help="comparar un mapa ya capturado en vez de recorrer el sitio")
             p.add_argument("--auto", action="store_true",
                            help="adopta solo cambios no criticos y registra todo en el historial (es lo que corre al inicio de cada trabajo)")
+
+    # Modulo de convocatorias (presentacion/solicitud): PIP y similares (assets/sigeva_pip.py).
+    import sigeva_pip as PIP
+
+    for nombre, ayuda in (("pip-mapear", "recorre el modulo de convocatorias (rol 72) en solo lectura"),
+                          ("pip-verificar", "compara el modulo con la linea base PIP y con su contrato")):
+        p = comun(sub.add_parser(nombre, help=ayuda), navegador=True)
+        p.add_argument("--tramite", help="codigo del tramite tal como lo muestra SIGEVA, p. ej. 11220260100119CO")
+        p.add_argument("--aceptar", action="store_true", help="adoptar el mapa actual como linea base PIP")
+        if nombre == "pip-verificar":
+            p.add_argument("--mapa", help="comparar un mapa ya capturado en vez de recorrer el modulo")
+            p.add_argument("--auto", action="store_true", help="adopta solo cambios no criticos (es lo que corre al inicio de cada trabajo PIP)")
+    p = comun(sub.add_parser("pip-estados", help="lee la tabla de estados del tramite (solo lectura)"), navegador=True)
+    p.add_argument("--tramite", help="codigo del tramite; si hay uno solo, no hace falta")
+    p = comun(sub.add_parser("pip-preparar", help="valida pip.json contra el trámite (sin red; lo que falta bloquea)"))
+    p.add_argument("--datos", required=True, help="pip.json con tramite y secciones")
+    p.add_argument("--salida", help="por defecto pip-listos.json junto al --datos")
+    p = comun(sub.add_parser("pip-cargar", help="completa secciones del tramite; guarda solo con --guardar"), navegador=True)
+    p.add_argument("--datos", required=True, help="pip-listos.json que produjo pip-preparar")
+    p.add_argument("--guardar", action="store_true", help="guardar de verdad (sin esto: en seco, con capturas)")
+    p.add_argument("--claves", nargs="+", help="cargar solo estas claves")
+    p.add_argument("--tramite", help="codigo del tramite; si hay uno solo, no hace falta")
+    p = comun(sub.add_parser("pip-enviar", help="aprieta ENVIAR PRESENTACIÓN: aparte, con --confirmo-enviar y todo en Ok"), navegador=True)
+    p.add_argument("--tramite", help="codigo del tramite; si hay uno solo, no hace falta")
+    p.add_argument("--confirmo-enviar", action="store_true",
+                   help="confirmacion explicita de un envio irreversible: la via preferida es apretar el boton a mano")
     args = parser.parse_args(argv)
     if getattr(args, "env_file", None):
         cargar_env(args.env_file)
     comandos = {"doctor": cmd_doctor, "bib": cmd_bib, "inventario": cmd_inventario, "catalogo": cmd_catalogo,
                 "inspeccionar": cmd_inspeccionar, "institucion": cmd_institucion, "preparar": cmd_preparar, "cargar": cmd_cargar,
-                "modificar": cmd_modificar, "cv": cmd_cv, "pdf": cmd_pdf, "mapear": cmd_mapear, "verificar": cmd_verificar}
+                "modificar": cmd_modificar, "cv": cmd_cv, "pdf": cmd_pdf, "mapear": cmd_mapear, "verificar": cmd_verificar,
+                "pip-mapear": PIP.cmd_pip_mapear, "pip-verificar": PIP.cmd_pip_verificar, "pip-estados": PIP.cmd_pip_estados,
+                "pip-preparar": PIP.cmd_pip_preparar, "pip-cargar": PIP.cmd_pip_cargar, "pip-enviar": PIP.cmd_pip_enviar}
     return comandos[args.comando](args)
 
 

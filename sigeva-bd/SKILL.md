@@ -1,11 +1,11 @@
 ---
 name: sigeva-bd
-description: "Trigger: SIGEVA, SIGEVA CONICET, Banco de Datos de Actividades CyT, cargar o corregir publicaciones/artículos/congresos/libros/capítulos/premios/antecedentes en SIGEVA, actualizar SIGEVA desde el CV, CVar, si.conicet.gov.ar, intranet CONICET, informe reglamentario, mapear o verificar cambios en los formularios de SIGEVA."
+description: "Trigger: SIGEVA, SIGEVA CONICET, Banco de Datos de Actividades CyT, cargar o corregir publicaciones/artículos/congresos/libros/capítulos/premios/antecedentes en SIGEVA, actualizar SIGEVA desde el CV, CVar, si.conicet.gov.ar, intranet CONICET, informe reglamentario, módulo de convocatorias, presentación/solicitud, PIP, PICT, cargar o completar el trámite de una convocatoria (carátula, grupo de investigación, financiamiento, adjuntos, ENVIAR PRESENTACIÓN), mapear o verificar cambios en los formularios de SIGEVA."
 license: Apache-2.0
-compatibility: Python >= 3.10 con Playwright y Chromium. Requiere cuenta propia de la intranet del CONICET con el rol "Usuario banco de datos de actividades de CyT".
+compatibility: Python >= 3.10 con Playwright y Chromium. Requiere cuenta propia de la intranet del CONICET con los roles "Usuario banco de datos de actividades de CyT" y "Usuario presentación/solicitud".
 metadata:
   author: "agusnieto77"
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 ## Activation Contract
@@ -16,9 +16,10 @@ Activar al pedir cargar, revisar, corregir, inventariar o actualizar antecedente
 
 - Todo lo que entra al Banco de Datos es una **declaración jurada**. No inventar ni estimar datos: un campo que falta se informa y bloquea ese registro; nunca se completa con algo plausible (mes de publicación, institución, editorial, resumen). Un dato aproximado (p. ej. páginas) solo con autorización explícita y avisando que es aproximado.
 - **Buscar antes de pedir.** Antes de pedirle a la persona un PDF, link, ISBN, páginas, compiladores o cualquier dato bibliográfico, buscarlo a fondo en la web (DOI, Crossref/OpenAlex, CONICET Digital y otros repositorios, sitio de la editorial o del evento, JSTOR, buscadores, Wayback para enlaces caídos) según el orden de [flujo-cv](references/flujo-cv.md#2-buscar-el-material-primero-en-la-web-siempre). Pedir solo lo que, tras esa búsqueda, no está en línea, todo junto y diciendo dónde se buscó. Lo que solo la persona puede declarar (área, alcance, referato, rol, aprobación de resúmenes) se pregunta, no se busca.
-- `cargar` trabaja **en seco** por defecto. Usar `--guardar` solo con autorización explícita de la persona para esa tanda, después de que revise las capturas en seco.
-- Altas con `cargar`; correcciones de registros existentes solo con `modificar` (en seco por defecto, `--guardar` con autorización), que sigue el protocolo anti-duplicados de [trampas](references/trampas.md#modificar-sin-duplicar). Nunca editar desde un id guardado de antes, nunca importar ni apretar "Enviar presentación". Borrar solo el duplicado que deja un `modificar` verificado (`--borrar-duplicado`), nunca otro registro.
-- Éxito = el registro **aparece en la lista** y sus fechas releídas coinciden. Sin error visible no alcanza; un error de Hibernate puede haber guardado igual. Nunca reintentar un guardado sin verificar antes la lista.
+- `cargar` trabaja **en seco** por defecto. Usar `--guardar` solo con autorización explícita de la persona para esa tanda, después de que revise las capturas en seco. Lo mismo vale para `pip-cargar` con las secciones del trámite.
+- **ENVIAR PRESENTACIÓN** (módulo de convocatorias): `pip-cargar` jamás lo aprieta. Solo `pip-enviar --confirmo-enviar`, en un comando aparte, con todos los estados en "Ok"; la vía preferida es que la persona lo aprete a mano en el navegador. Es irreversible.
+- Altas con `cargar`; correcciones de registros existentes solo con `modificar` (en seco por defecto, `--guardar` con autorización), que sigue el protocolo anti-duplicados de [trampas](references/trampas.md#modificar-sin-duplicar). Nunca editar desde un id guardado de antes, nunca importar. Borrar solo el duplicado que deja un `modificar` verificado (`--borrar-duplicado`), nunca otro registro. En el Banco de Datos, "Enviar presentación" no se toca nunca (es cosa del módulo de convocatorias, y ahí solo con la regla de arriba).
+- Éxito = el registro **aparece en la lista** y sus fechas releídas coinciden (en convocatorias: la sección **vuelve a "Ok" en la tabla de estados**). Sin error visible no alcanza; un error de Hibernate puede haber guardado igual. Nunca reintentar un guardado sin verificar antes la lista o la tabla.
 - Credenciales: la persona las tipea en el navegador, o llegan por `--env-file` o `SIGEVA_USER`/`SIGEVA_PASS` solo para autenticar. Nunca pedirlas en el chat, imprimirlas, ni escribirlas en código, logs, documentación o el repositorio. SIGEVA bloquea la cuenta tras varios ingresos fallidos: ante un rechazo del CAS no se reintenta nunca; si el CAS solo se cuelga, el ingreso espera, recarga y reintenta una única vez. Si vuelve a fallar, parar y pedirle a la persona que pruebe entrar a mano.
 - Nunca pedir que la persona confirme un id solo (`persona_id`, institución, revista, área): mostrarlo siempre con su nombre legible, p. ej. "`persona_id` 12345 = GARCÍA, MARÍA, autora declarante en 3 registros". Un número solo es una aprobación a ciegas. Antes de `--guardar`, mostrarle cómo quedaría cada registro (campos, autores con filiación, área con nombre, resumen) y esperar su ok.
 - `mapear`, `verificar`, `inventario`, `catalogo`, `inspeccionar` e `institucion` son de solo lectura: no envían formularios ni abren acciones sobre registros. `cv`, `preparar`, `bib` y `pdf` no tocan SIGEVA.
@@ -45,6 +46,11 @@ Activar al pedir cargar, revisar, corregir, inventariar o actualizar antecedente
 | ¿SIGEVA cambió? | Corre solo al iniciar cada trabajo; a mano: `verificar --auto` ([monitoreo](references/monitoreo.md)) |
 | El trabajo no arrancó por un cambio crítico | Mostrar el informe a la persona; corregir `assets/sigeva_bd.py`/`CONTRATO`, probar con el simulador, `verificar --aceptar` |
 | Registro bloqueado en `preparar` | Mostrar `errores` a la persona y pedir el dato; no rellenar |
+| Cargar el trámite de una convocatoria (PIP/PICT) | `pip-mapear --aceptar` (una vez por instancia) → armar `pip.json` con los datos que declara la persona, campos según el [mapa PIP](references/pip.md) → `pip-preparar` → `pip-cargar` en seco → mostrar → `pip-cargar --guardar` → verificar que la tabla quede toda en "Ok" ([pip](references/pip.md)) |
+| ¿Qué falta en el trámite? | `pip-estados`: lee la tabla de estados (solo lectura) y qué secciones tienen enlace de carga |
+| El trámite está todo en "Ok" | Mostrar el resumen y los adjuntos a la persona: ENVIAR PRESENTACIÓN lo apreta ella; `pip-enviar --confirmo-enviar` solo con su orden explícita ([pip](references/pip.md)) |
+| ¿Cambió el módulo de convocatorias? | `pip-verificar --auto` (corre solo al inicio de cada trabajo PIP; severidades en [monitoreo](references/monitoreo.md)) |
+| `pip-cargar` no arranca por la línea base | "origen" mal emparejado: la línea base del simulador no vale para el sitio real (y viceversa); correr `pip-mapear --aceptar` contra la base que corresponda |
 
 ## Execution Steps
 
@@ -56,14 +62,24 @@ Activar al pedir cargar, revisar, corregir, inventariar o actualizar antecedente
 6. Con su autorización: `cargar --guardar`. Leer el recibo; ante `no-guardado`, `rechazado` o `corte`, mirar la captura y la lista antes de cualquier reintento.
 7. Repetir `inventario` al terminar. Cargar el Banco de Datos **antes** de armar una presentación: la solicitud toma los registros de ahí y solo computa los del período de la convocatoria.
 
+## Execution Steps (módulo de convocatorias)
+
+1. `pip-mapear --tramite <código> --aceptar` una vez por instancia: línea base PIP en `references/mapa-pip-base.json` (origen real o simulador, nunca mezcladas).
+2. `pip-estados`: qué secciones están en "Sin Datos" y cuáles tienen enlace de carga. Las que no lo tienen se resuelven en el Banco de Datos, no en el trámite.
+3. Armar `pip.json` con los datos que declara la persona (`tramite`, `secciones` con `seccion` exacta de la tabla, `campos` por nombre de control según el mapa, `archivo` para los adjuntos); `pip-preparar` valida sin red y bloquea lo que falte.
+4. `pip-cargar` en seco con `--claves` chicas; revisar capturas con la persona.
+5. Con su autorización: `pip-cargar --guardar`. Éxito = cada sección vuelve a "Ok" en la tabla de estados; ante `no-guardado` o `rechazado`, mirar la captura y la tabla antes de cualquier reintento.
+6. Con todo en "Ok", mostrar el resumen y los adjuntos a la persona: ENVIAR PRESENTACIÓN lo apreta ella (o `pip-enviar --tramite <código> --confirmo-enviar`).
+
 ## Output Contract
 
-Informar por tanda: modo (`en-seco`/`guardar`), solicitados, resultado por clave (`guardado` con `verificado: true`, `ya-estaba`, `en-seco`, `rechazado`, `no-guardado`, `error`, `corte`), avisos, capturas, `motivo_fin` y ruta del recibo `recibo-cargar-*.json`. `verificar` devuelve el resumen por severidad (`critico`, `alto`, `medio`, `bajo`), cada cambio y si se adoptó la nueva línea base. No presentar una carga en seco ni una prueba contra el simulador como carga real.
+Informar por tanda: modo (`en-seco`/`guardar`), solicitados, resultado por clave (`guardado` con `verificado: true`, `ya-estaba`, `en-seco`, `rechazado`, `no-guardado`, `error`, `corte`), avisos, capturas, `motivo_fin` y ruta del recibo `recibo-cargar-*.json`. `verificar` devuelve el resumen por severidad (`critico`, `alto`, `medio`, `bajo`), cada cambio y si se adoptó la nueva línea base. No presentar una carga en seco ni una prueba contra el simulador como carga real. En convocatorias: mismas reglas con el recibo `recibo-pip-cargar-*.json`, la tabla final de `estados` y la confirmación de que ENVIAR PRESENTACIÓN solo se tocó con `--confirmo-enviar` o quedó en manos de la persona.
 
 ## References
 
 - [Del CV al Banco de Datos](references/flujo-cv.md) — flujo completo, orden de búsqueda en la web, qué preguntar y errores ya resueltos.
 - [Formato de registros](references/registros.md) — campos de `articulo`, `evento`, `capitulo`, `libro` y `generico`, y qué bloquea cada uno.
+- [Módulo de convocatorias (PIP)](references/pip.md) — trámite de presentación: estados, secciones, adjuntos y ENVIAR.
 - [Trampas de SIGEVA](references/trampas.md) — datepickers, filiaciones, verificación, sesión; por qué el código hace lo que hace.
 - [Monitoreo](references/monitoreo.md) — `mapear`, `verificar`, severidades, contrato y programación periódica.
 - [Mapa del sitio](references/mapa-sitio.md) — estructura relevada (generado; no editar a mano).

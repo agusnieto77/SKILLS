@@ -2,8 +2,8 @@
 
 > Archivo generado por `sigeva_bd.py mapear --aceptar` / `verificar --aceptar`. No editar a mano.
 
-- Versión de SIGEVA: **14.11.24.6**
-- Capturado: 2026-10-25T18:08:46+00:00
+- Versión de SIGEVA: **14.11.24.12**
+- Capturado: 2026-11-12T05:23:20+00:00
 - Pantallas: 123 · omitidas por seguridad: 149 · errores: 0
 - Recorrido completo: sí
 

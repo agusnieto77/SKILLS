@@ -63,6 +63,12 @@ python $S cargar --registros sigeva-trabajo/listos.json --config config.json --l
 | `modificar` | Corrige campos de un registro existente sin dejar duplicados (protocolo por ids de la lista) | solo con `--guardar` |
 | `mapear` | Recorre el Banco de Datos y documenta su estructura | no |
 | `verificar` | Compara el sitio real con la línea base y con el contrato del cargador | no |
+| `pip-mapear` | Recorre el módulo de convocatorias (rol presentación) y arma la línea base PIP | no |
+| `pip-verificar` | Compara el módulo con la línea base PIP y con su contrato | no |
+| `pip-estados` | Lee la tabla de estados del trámite y qué secciones tienen enlace de carga | no |
+| `pip-preparar` | Valida `pip.json` (trámite y secciones) sin red; lo que falta bloquea | no |
+| `pip-cargar` | Completa secciones del trámite; con `--guardar`, guarda y relee la tabla de estados | solo con `--guardar` |
+| `pip-enviar` | Único comando que puede apretar ENVIAR PRESENTACIÓN: aparte, `--confirmo-enviar` y todo en "Ok" | solo con `--confirmo-enviar` |
 
 `cargar` lleva un log append-only (`sigeva-trabajo/estado.jsonl`) para no repetir altas, deja un recibo por tanda y capturas de cada formulario. Para corregir un registro existente está `modificar` (ver abajo); ningún comando borra registros salvo el duplicado que pueda dejar un `modificar`, y solo con `--borrar-duplicado`.
 
@@ -75,6 +81,29 @@ python $S modificar --tipo capitulo --titulo "Historia del trabajo en el puerto"
 Los nombres de campo salen del [mapa](references/mapa-sitio.md) o de `inspeccionar`. Para un `select`, el valor puede ir como JSON: `--campo 'idioma={"etiqueta":"Español"}'`.
 
 El formato de los registros, incluido el `generico`, está en [references/registros.md](references/registros.md).
+
+## Módulo de convocatorias (PIP y similares)
+
+El trámite de presentación (rol "Usuario presentación/solicitud") tiene su propia línea base y sus
+propios comandos; detalle completo en [references/pip.md](references/pip.md):
+
+```bash
+cd mi-carpeta-de-trabajo            # fuera del repositorio
+S=ruta/a/sigeva-bd/assets/sigeva_bd.py
+
+# Una vez por instancia: relevar el módulo en solo lectura y adoptar la línea base PIP.
+python $S pip-mapear --config config.json --env-file .env --headless --tramite 11220260100119CO --aceptar
+
+python $S pip-estados   --config config.json --env-file .env --headless          # qué falta y qué tiene enlace
+python $S pip-preparar  --datos pip.json                                        # valida; lo que falta bloquea
+python $S pip-cargar    --datos pip-listos.json --config config.json --env-file .env --headless
+python $S pip-cargar    --datos pip-listos.json --config config.json --env-file .env --headless --guardar
+```
+
+`pip-cargar` nunca aprieta **ENVIAR PRESENTACIÓN**: cuando la tabla queda toda en "Ok", lo
+informa para que la persona lo aprete a mano; `pip-enviar --tramite … --confirmo-enviar` existe
+como excepción explícita y aparte. La línea base PIP que trae el repositorio es del simulador:
+contra el sitio real hay que correr `pip-mapear --aceptar` una vez antes de cargar.
 
 ## Monitoreo de cambios
 

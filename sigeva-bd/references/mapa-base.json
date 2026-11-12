@@ -1,7 +1,7 @@
 {
- "capturado_en_utc": "2026-10-25T18:08:46+00:00",
+ "capturado_en_utc": "2026-11-12T05:23:20+00:00",
  "base": "https://si.conicet.gov.ar/",
- "version_sigeva": "14.11.24.6",
+ "version_sigeva": "14.11.24.12",
  "pantallas": {
   "indexBancoDatos.do?idGrupo=0&idMenu=0&idModulo=1": {
    "ruta": "indexBancoDatos.do?idGrupo=0&idMenu=0&idModulo=1",

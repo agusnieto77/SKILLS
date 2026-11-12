@@ -21,7 +21,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
 ACCIONES_SEGURAS = {"", "nuevo"}
 PARAMETROS_ACCION = ("action", "accion", "btnsubmit", "buttonsubmit", "metodo", "method", "operacion")
 # Nunca se visitan, aunque parezcan paginas: cierran sesion, importan o comparten datos.
-RUTAS_PROHIBIDAS = re.compile(r"salir|logout|importar|sincroniz|archivodinamico|descarga|download|imprimir.*\.pdf", re.I)
+RUTAS_PROHIBIDAS = re.compile(r"salir|logout|importar|sincroniz|archivodinamico|descarga|download|postular|imprimir.*\.pdf", re.I)
 PARAMETROS_DESCARTABLES = re.compile(r"^(ticket|jsessionid|paginar|d-\d+-[pso]|_)$", re.I)
 # Pares parametro=valor de paginacion: algunos enlaces los acumulan en cada visita (bcoRoles.do).
 VALORES_PAGINACION = {"paginar"}
@@ -29,6 +29,11 @@ PARAMETROS_REGISTRO = re.compile(r"^(id|produccionid|actividadid|personaid|trami
 # Pasos de navegacion con submit permitidos: solo los que abren un formulario vacio.
 PASOS_SEGUROS = {"bcoPrecargarArticulo.do?action=Nuevo": "Omitir"}
 SEVERIDADES = ("critico", "alto", "medio", "bajo")
+# Excepciones por modulo (las setea el llamador, p. ej. sigeva_pip): en el modulo de
+# convocatorias `tramiteId` identifica al tramite (estructura) y las altas usan acciones
+# propias; sin esta excepcion el recorrido las trataria como paginas de registros.
+IDS_ESTRUCTURALES_EXTRA: set[str] = set()
+ACCIONES_SEGURAS_EXTRA: set[str] = set()
 
 JS_ESTRUCTURA = r"""() => {
     const limpio = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -121,7 +126,7 @@ def clasificar_url(href: str, url_actual: str, base: str) -> dict:
     ruta = pagina + ("?" + urlencode(params, safe="=/") if params else "")
     if RUTAS_PROHIBIDAS.search(pagina):
         return {"ruta": ruta, "accion": accion, "visitar": False, "motivo": "ruta prohibida (sesion, importacion o descarga)"}
-    if accion not in ACCIONES_SEGURAS:
+    if accion not in ACCIONES_SEGURAS and accion not in ACCIONES_SEGURAS_EXTRA:
         return {"ruta": ruta, "accion": accion, "visitar": False, "motivo": f"accion sobre registros ({accion})"}
     if any(v == "N" for _, v in params):
         return {"ruta": ruta, "accion": accion, "visitar": False, "motivo": "pagina de un registro"}
@@ -132,8 +137,11 @@ def _es_id_registro(clave: str, valor: str) -> bool:
     """Ids de registros de la persona (no estructura): se generalizan a N.
 
     Los ids estructurales (tipoFinanciamientoId=5, sincronizarformId=30) son chicos;
-    los de registros (formacionId=1167646, cargoIdId=1295205) no.
+    los de registros (formacionId=1167646, cargoIdId=1295205) no. IDS_ESTRUCTURALES_EXTRA
+    nombra parametros que un modulo trata como estructura (p. ej. tramiteId en convocatorias).
     """
+    if clave.lower() in IDS_ESTRUCTURALES_EXTRA:
+        return False
     if not valor.isdigit():
         return False
     return bool(PARAMETROS_REGISTRO.match(clave)) or (clave.lower().endswith("id") and len(valor) >= 4)
@@ -156,12 +164,15 @@ def _tipo_pantalla(estructura: dict) -> str:
 
 
 def mapear(sesion, inicio: str | list[str], max_pantallas: int = 300, pausa_ms: int = 1_000, log=print,
-           seguir: bool = True) -> dict:
+           seguir: bool = True, excluir: set[str] | None = None) -> dict:
     """Recorrido en anchura desde `inicio` (rutas relativas a /eva/). Solo lectura.
 
     Con `seguir=False` visita solo esas pantallas (y sus pasos seguros): es el chequeo
-    rapido del contrato que hace `cargar` antes de guardar.
+    rapido del contrato que hace `cargar` antes de guardar. `excluir` nombra rutas
+    canonicas que no se visitan ni se encolan (p. ej. los otros tramites del modulo
+    de convocatorias: cada uno se mapea por separado).
     """
+    excluidas = set(excluir or ())
     page = sesion.page
     inicios = [inicio] if isinstance(inicio, str) else list(inicio)
     pendientes, vistas = [canonica(r.partition("#")[0]) for r in inicios], set()
@@ -170,7 +181,7 @@ def mapear(sesion, inicio: str | list[str], max_pantallas: int = 300, pausa_ms: 
     version = ""
     while pendientes and len(pantallas) < max_pantallas:
         ruta = pendientes.pop(0)
-        if ruta in vistas:
+        if ruta in vistas or ruta in excluidas:
             continue
         vistas.add(ruta)
         url = sesion.url(ruta if ruta.startswith("eva/") else "eva/" + ruta)
@@ -187,7 +198,7 @@ def mapear(sesion, inicio: str | list[str], max_pantallas: int = 300, pausa_ms: 
             continue
         version = version or estructura["version"]
         destino = pendientes if seguir else []
-        pantallas[ruta] = _resumir_pantalla(ruta, estructura, page.url, sesion.base, destino, vistas, omitidos)
+        pantallas[ruta] = _resumir_pantalla(ruta, estructura, page.url, sesion.base, destino, vistas, omitidos, excluir)
         if ruta in pasos:
             boton = pasos[ruta]
             try:
@@ -196,7 +207,7 @@ def mapear(sesion, inicio: str | list[str], max_pantallas: int = 300, pausa_ms: 
                 page.wait_for_timeout(pausa_ms)
                 estructura = page.evaluate(JS_ESTRUCTURA)
                 ruta_paso = f"{ruta}#{boton.lower()}"
-                pantallas[ruta_paso] = _resumir_pantalla(ruta_paso, estructura, page.url, sesion.base, destino, vistas, omitidos)
+                pantallas[ruta_paso] = _resumir_pantalla(ruta_paso, estructura, page.url, sesion.base, destino, vistas, omitidos, excluir)
             except Exception as e:
                 errores[f"{ruta}#{boton.lower()}"] = str(e).splitlines()[0][:200]
         if len(pantallas) % 10 == 0:
@@ -205,13 +216,14 @@ def mapear(sesion, inicio: str | list[str], max_pantallas: int = 300, pausa_ms: 
             "completo": not pendientes and not errores, "pendientes_sin_visitar": pendientes[:50]}
 
 
-def _resumir_pantalla(ruta, estructura, url_real, base, pendientes, vistas, omitidos) -> dict:
+def _resumir_pantalla(ruta, estructura, url_real, base, pendientes, vistas, omitidos, excluir: set[str] | None = None) -> dict:
+    excluidas = set(excluir or ())
     navegacion, acciones = set(), {}
     for enlace in estructura["enlaces"]:
         c = clasificar_url(enlace["href"], url_real, base)
         if c["visitar"]:
             navegacion.add(c["ruta"])
-            if c["ruta"] not in vistas and c["ruta"] not in pendientes:
+            if c["ruta"] not in vistas and c["ruta"] not in pendientes and c["ruta"] not in excluidas:
                 pendientes.append(c["ruta"])
         elif c["motivo"] not in ("externo",):
             acciones.setdefault(c["ruta"], c["motivo"])
