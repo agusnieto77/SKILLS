@@ -43,7 +43,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 BASE_DEFECTO = "https://si.conicet.gov.ar"
 ROL_BANCO_DATOS = 96
 RUTAS = {

@@ -78,3 +78,10 @@ Al modificar registros viejos SIGEVA también puede pedir cosas que antes no ped
 - La revista se puede dar de alta como "otra" solo con ISSN, y ese bloque aparece recién en la pantalla de resultados de una búsqueda.
 - La precarga por DOI existe pero es intermitente y deja vacíos campos obligatorios: el cargador entra por *Omitir*.
 - Una convocatoria solo computa registros del período: un rubro "Con datos" puede valer cero.
+
+## Convocatorias (trámite PIP)
+
+- "Ok" en la tabla de estados no significa "al día": una sección completada con datos viejos (título, resumen) sigue en "Ok". `pip-cargar` reabre y compara antes de darla por hecha.
+- El resumen del proyecto admite 2500 caracteres (el título, 255) y SIGEVA **borra los saltos de línea sin dejar espacio**: dos párrafos quedan pegados ("región.Sus"). Unir los párrafos con un espacio.
+- Recusación y Otras fuentes no pasan a "Ok" con un Guardar vacío. En Otras fuentes cada clic en una casilla envía el formulario (`actualizar()`): tildar es guardar.
+- Quien se incorpora al grupo con el código del trámite aparece sin rol y con la casilla HAB destildada: sin habilitar no integra el proyecto.

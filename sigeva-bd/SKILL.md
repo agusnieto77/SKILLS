@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Python >= 3.10 con Playwright y Chromium. Requiere cuenta propia de la intranet del CONICET con los roles "Usuario banco de datos de actividades de CyT" y "Usuario presentación/solicitud".
 metadata:
   author: "agusnieto77"
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 ## Activation Contract
@@ -19,7 +19,7 @@ Activar al pedir cargar, revisar, corregir, inventariar o actualizar antecedente
 - `cargar` trabaja **en seco** por defecto. Usar `--guardar` solo con autorización explícita de la persona para esa tanda, después de que revise las capturas en seco. Lo mismo vale para `pip-cargar` con las secciones del trámite.
 - **ENVIAR PRESENTACIÓN** (módulo de convocatorias): `pip-cargar` jamás lo aprieta. Solo `pip-enviar --confirmo-enviar`, en un comando aparte, con todos los estados en "Ok"; la vía preferida es que la persona lo aprete a mano en el navegador. Es irreversible.
 - Altas con `cargar`; correcciones de registros existentes solo con `modificar` (en seco por defecto, `--guardar` con autorización), que sigue el protocolo anti-duplicados de [trampas](references/trampas.md#modificar-sin-duplicar). Nunca editar desde un id guardado de antes, nunca importar. Borrar solo el duplicado que deja un `modificar` verificado (`--borrar-duplicado`), nunca otro registro. En el Banco de Datos, "Enviar presentación" no se toca nunca (es cosa del módulo de convocatorias, y ahí solo con la regla de arriba).
-- Éxito = el registro **aparece en la lista** y sus fechas releídas coinciden (en convocatorias: la sección **vuelve a "Ok" en la tabla de estados**). Sin error visible no alcanza; un error de Hibernate puede haber guardado igual. Nunca reintentar un guardado sin verificar antes la lista o la tabla.
+- Éxito = el registro **aparece en la lista** y sus fechas releídas coinciden (en convocatorias: la sección **vuelve a "Ok" en la tabla de estados y lo releído del formulario coincide con lo pedido**; "Ok" no significa "al día": una sección en "Ok" se reabre y se compara antes de darla por hecha). Sin error visible no alcanza; un error de Hibernate puede haber guardado igual. Nunca reintentar un guardado sin verificar antes la lista o la tabla.
 - Credenciales: la persona las tipea en el navegador, o llegan por `--env-file` o `SIGEVA_USER`/`SIGEVA_PASS` solo para autenticar. Nunca pedirlas en el chat, imprimirlas, ni escribirlas en código, logs, documentación o el repositorio. SIGEVA bloquea la cuenta tras varios ingresos fallidos: ante un rechazo del CAS no se reintenta nunca; si el CAS solo se cuelga, el ingreso espera, recarga y reintenta una única vez. Si vuelve a fallar, parar y pedirle a la persona que pruebe entrar a mano.
 - Nunca pedir que la persona confirme un id solo (`persona_id`, institución, revista, área): mostrarlo siempre con su nombre legible, p. ej. "`persona_id` 12345 = GARCÍA, MARÍA, autora declarante en 3 registros". Un número solo es una aprobación a ciegas. Antes de `--guardar`, mostrarle cómo quedaría cada registro (campos, autores con filiación, área con nombre, resumen) y esperar su ok.
 - `mapear`, `verificar`, `inventario`, `catalogo`, `inspeccionar` e `institucion` son de solo lectura: no envían formularios ni abren acciones sobre registros. `cv`, `preparar`, `bib` y `pdf` no tocan SIGEVA.
@@ -66,7 +66,7 @@ Activar al pedir cargar, revisar, corregir, inventariar o actualizar antecedente
 
 1. `pip-mapear --tramite <código> --aceptar` una vez por instancia: línea base PIP en `references/mapa-pip-base.json` (origen real o simulador, nunca mezcladas).
 2. `pip-estados`: qué secciones están en "Sin Datos" y cuáles tienen enlace de carga. Las que no lo tienen se resuelven en el Banco de Datos, no en el trámite.
-3. Armar `pip.json` con los datos que declara la persona (`tramite`, `secciones` con `seccion` exacta de la tabla, `campos` por nombre de control según el mapa, `archivo` para los adjuntos); `pip-preparar` valida sin red y bloquea lo que falte.
+3. Armar `pip.json` con los datos que declara la persona (`tramite`, `secciones` con `seccion` exacta de la tabla, `campos` por nombre de control según el mapa, `filas` para grillas repetidas como la recusación, `seleccion` para casillas paginadas como otras fuentes, `miembros` para el grupo, `archivo` para los adjuntos). Si hay un plan de trabajo, título y resumen se leen del plan para que no diverjan. `pip-preparar` valida sin red y bloquea lo que falte.
 4. `pip-cargar` en seco con `--claves` chicas; revisar capturas con la persona.
 5. Con su autorización: `pip-cargar --guardar`. Éxito = cada sección vuelve a "Ok" en la tabla de estados; ante `no-guardado` o `rechazado`, mirar la captura y la tabla antes de cualquier reintento.
 6. Con todo en "Ok", mostrar el resumen y los adjuntos a la persona: ENVIAR PRESENTACIÓN lo apreta ella (o `pip-enviar --tramite <código> --confirmo-enviar`).

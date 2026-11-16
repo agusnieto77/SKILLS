@@ -1,5 +1,5 @@
 {
- "capturado_en_utc": "2026-11-12T13:19:53+00:00",
+ "capturado_en_utc": "2026-11-12T21:53:11+00:00",
  "base": "https://si.conicet.gov.ar/",
  "modulo": "pip",
  "origen": "real",
@@ -548,12 +548,12 @@
        "cantidad": 16,
        "valores_opcion": [
         "422795",
-        "431105",
         "422703",
         "422761",
         "422763",
         "431401",
         "423121",
+        "432394",
         "431343",
         "420837",
         "422657",
@@ -1604,6 +1604,7 @@
        "datepicker": false,
        "cantidad": 10,
        "valores_opcion": [
+        "127412",
         "1255716",
         "739940",
         "199709",
@@ -1612,8 +1613,7 @@
         "1255725",
         "1255717",
         "1326174",
-        "493898",
-        "1538942"
+        "493898"
        ]
       },
       {
@@ -1710,7 +1710,6 @@
    "acciones": {
     "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)",
     "financiamientoCYTProyectoFuente.do?accion=editar&id=N&tipoFinanciamientoId=5": "accion sobre registros (editar)",
-    "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=11": "accion sobre registros (ver)",
     "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=5": "accion sobre registros (ver)",
     "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
    },
@@ -1880,12 +1879,12 @@
        "cantidad": 16,
        "valores_opcion": [
         "422795",
-        "431105",
         "422703",
         "422761",
         "422763",
         "431401",
         "423121",
+        "432394",
         "431343",
         "420837",
         "422657",
@@ -2168,6 +2167,7 @@
        "datepicker": false,
        "cantidad": 10,
        "valores_opcion": [
+        "127412",
         "1255716",
         "739940",
         "199709",
@@ -2176,8 +2176,7 @@
         "1255725",
         "1255717",
         "1326174",
-        "493898",
-        "1538942"
+        "493898"
        ]
       },
       {
@@ -2273,7 +2272,6 @@
    "acciones": {
     "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)",
     "financiamientoCYTProyectoFuente.do?accion=editar&id=N&tipoFinanciamientoId=5": "accion sobre registros (editar)",
-    "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=11": "accion sobre registros (ver)",
     "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=5": "accion sobre registros (ver)",
     "salir.jsp": "ruta prohibida (sesion, importacion o descarga)"
    },
@@ -2288,8 +2286,7 @@
   "archivoDinamico.do?email=true": "ruta prohibida (sesion, importacion o descarga)",
   "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=5": "accion sobre registros (ver)",
   "financiamientoCYTProyectoFuente.do?accion=editar&id=N&tipoFinanciamientoId=5": "accion sobre registros (editar)",
-  "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)",
-  "financiamientoCYTProyectoFuente.do?accion=ver&id=N&tipoFinanciamientoId=11": "accion sobre registros (ver)"
+  "financiamientoCYTEventoEquipamiento.do?accion=ver&grupoFinanciamientoId=3&id=N": "accion sobre registros (ver)"
  },
  "errores": {},
  "completo": true

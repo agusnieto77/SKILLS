@@ -85,22 +85,32 @@ Reglas de lectura:
   (4) y (5)). Si la grilla real no trae una celda única por código/año, o el código
   trae etiquetas inconsistentes entre años, se informa y no se toca nada.
 - `miembros`: `[{nombre, dedicacion, [rol]}]` para la grilla del grupo. Se empareja por
-  nombre normalizado contra las filas reales; rol opcional (`Titular`, `Co-titular`,
-  `Investigador`, `Becario`, `Prof técnico`). Los que no figuran en la grilla se informan
-  como avisos (hay que incorporarlos en SIGEVA primero: la pantalla no ofrece alta).
-  Si la sección ya está en "Ok", igual se abre y se compara: solo se guarda si alguna
-  dedicación o rol difiere (`ya-estaba` si ya coincide).
+  nombre normalizado contra las filas reales (el nombre tiene que estar contenido en el de
+  la grilla: "RABINO, Daniel Nicolás", no "RABINO, Nicolás"); rol opcional (`Titular`,
+  `Co-titular`, `Investigador`, `Becario`, `Prof técnico`). Cada declarado se **habilita**
+  (casilla HAB, `seleccionadas`): quien se incorpora con el código del trámite aparece sin
+  rol y sin habilitar, y así no integra el proyecto. Los que no figuran en la grilla
+  se informan como avisos (se incorporan desde su Banco de Datos con el código del trámite:
+  la pantalla no ofrece alta). Los extranjeros pueden figurar solo en el plan (instructivo).
+- `filas`: `[{columna: valor, ...}]` para grillas de filas repetidas, como la recusación
+  (`apellido`, `nombre`, `observacion`). Se escriben en orden y se vacían las sobrantes: la
+  lista declarada es la completa. Ninguna columna puede quedar vacía. El instructivo pide
+  listar a quienes no deban evaluar **y/o hayan colaborado con el titular en los últimos 5
+  años**; el Guardar vacío no marca "Ok".
+- `seleccion`: `{"campo": "otrosFinanciamientos", "valores": [ids]}` para listas paginadas
+  de casillas (Otras fuentes de financiamiento: se tildan los subsidios del titular y del
+  grupo). En SIGEVA **cada clic en una casilla envía el formulario y guarda**
+  (`actualizar()`): en seco solo se recorren las páginas y se informa cuántas faltan; con
+  `--guardar`, primero un recorrido de solo lectura valida que existan todos los valores
+  (si falta uno, no se toca nada) y recién después se hace clic. Nunca destilda.
 - `archivo`: subida en dos pasos (lista de adjuntos → Adjuntar del slot → página de
   subida). `tipo` es el valor de `tipoArchivo` del slot en la página de adjuntos;
   `seccion` es el nombre tal como figura en la tabla de estados (en el trámite real:
   "Plan de trabajo" y "Aval de la autoridad máxima del LT del titular", sin "(PDF)").
   Se valida que exista, que sea PDF y que entre en el límite del módulo
   (35 MB por defecto, configurable con `limite_adjunto_mb` en config).
-- `guardar_vacio`: guarda el formulario sin tocar nada (recusación sin recusados,
-  otras fuentes sin tildar). Ojo: en el sitio real el Guardar vacío **no** marca "Ok"
-  en esas pantallas (probado con clicks reales y relectura del DOM): si no hay nada
-  que declarar y el sitio no ofrece cómo decirlo, se informa `no-guardado` y la
-  persona lo resuelve a mano o con la mesa de ayuda; jamás se inventa contenido.
+- `guardar_vacio`: guarda el formulario sin tocar nada. En el sitio real **no** sirve para
+  recusación ni otras fuentes (el Guardar vacío no marca "Ok"): usar `filas` y `seleccion`.
 - Declaración jurada: campo vacío o faltante → `pip-preparar` bloquea y se le pide el dato a la
   persona; nada se completa con algo plausible.
 
@@ -120,11 +130,17 @@ python assets/sigeva_bd.py pip-cargar --datos pip-listos.json --config config.js
 - Toda la disciplina del Banco de Datos aplica: `pip-verificar --auto` al inicio de la sesión
   (reutiliza una aprobada de 6 h), tandas cortas, en seco primero, `--guardar` solo con
   autorización explícita para esa tanda, después de que la persona revise las capturas.
-- **Éxito = la sección vuelve a "Ok" en la tabla de estados.** Después de cada Guardar se
-  reabre el trámite y se relee la tabla (con reintentos, como la confirmación de altas).
+- **Éxito = la sección vuelve a "Ok" en la tabla de estados** y, para `campos`, `filas`,
+  `seleccion` y `miembros`, **lo releído coincide con lo pedido**. Después de cada Guardar se
+  reabre el trámite, se relee la tabla (con reintentos) y se vuelve a abrir el formulario.
+- **"Ok" no significa "al día".** Una sección en "Ok" con esos tipos se reabre y se compara
+  campo por campo: si coincide, `ya-estaba` sin guardar; si difiere, se corrige y el recibo
+  dice qué (`difiere`). Así un título o un resumen viejos no quedan cargados porque la
+  sección ya estaba completa. Grillas de montos y adjuntos en "Ok" se dan por hechos.
 - Resultados por clave: `guardado`, `ya-estaba`, `en-seco`, `rechazado` (mensaje de validación de
-  SIGEVA), `no-guardado` (volvió sin error y sin guardar), `error`, `corte`. Recibo
-  `recibo-pip-cargar-*.json` y log append-only `estado-pip.jsonl`.
+  SIGEVA), `no-guardado` (volvió sin error y sin guardar, o lo releído no coincide), `error`,
+  `corte`. Recibo `recibo-pip-cargar-*.json` y log append-only `estado-pip.jsonl`, con la
+  `huella` del contenido: si cambian los datos de una sección, deja de darse por hecha.
 - El formulario de la sección se llena con las mismas primitivas que el Banco de Datos:
   fechas con `setDate` (el datepicker pisa lo escrito), selects con eventos reales, archivos con
   `set_input_files`.

@@ -599,6 +599,32 @@ class TestPipRelleno(unittest.TestCase):
         ok3, _ = PIP.grupo_al_dia([dict(filas[0], ded="50")],
                                    [{"nombre": "Nieto", "dedicacion": "100"}])
         self.assertFalse(ok3)
+        # Figura con la dedicación pedida pero sin la casilla HAB: no integra el proyecto.
+        ok4, _ = PIP.grupo_al_dia([dict(filas[0], hab=False)], [{"nombre": "Nieto", "dedicacion": "100"}])
+        self.assertFalse(ok4)
+
+    def test_diferencias_campos_normaliza_espacios_y_detecta_cambios(self):
+        actual = {"titulo": {"valor": "Enfoques  computacionales\r\npara la protesta "},
+                  "area": {"valor": "KS", "texto": "KS - Ciencias Sociales"},
+                  "comite": {"valor": "2"}, "fecha": {"valor": "09/2027"}}
+        iguales = {"titulo": "Enfoques computacionales para la protesta", "area": {"valor": "KS"},
+                   "comite": "2", "fecha": {"fecha": "09/2027"}}
+        self.assertEqual(PIP.diferencias_campos(actual, iguales), [])
+        self.assertEqual(PIP.diferencias_campos(actual, {"titulo": "Otro título", "area": {"etiqueta": "KS - Ciencias Sociales"},
+                                                         "falta": "x"}), ["titulo", "falta"])
+
+    def test_filas_al_dia_ignora_vacias_y_respeta_orden(self):
+        pedidas = [{"apellido": "PACHECO", "nombre": "Diego", "observacion": "Coautor"},
+                   {"apellido": "SANTELLA", "nombre": "Agustín", "observacion": "Coautor"}]
+        cargadas = [["PACHECO", "Diego", "Coautor "], ["SANTELLA", "Agustín", "Coautor"], ["", "", ""]]
+        self.assertTrue(PIP.filas_al_dia(cargadas, pedidas))
+        self.assertFalse(PIP.filas_al_dia(list(reversed(cargadas[:2])), pedidas))
+        self.assertFalse(PIP.filas_al_dia(cargadas[:1], pedidas))
+
+    def test_huella_cambia_con_el_contenido_y_no_con_los_avisos(self):
+        item = {"clave": "datos", "seccion": "Datos del proyecto", "campos": {"t": "A"}, "avisos": []}
+        self.assertEqual(PIP.huella(item), PIP.huella({**item, "avisos": ["otro aviso"]}))
+        self.assertNotEqual(PIP.huella(item), PIP.huella({**item, "campos": {"t": "B"}}))
 
 
 class TestPipPreparar(unittest.TestCase):
@@ -657,6 +683,19 @@ class TestPipPreparar(unittest.TestCase):
         self.assertTrue(any("duplicada" in e for e in salida["errores"]))
         salida = PIP.validar_pip(self.datos(secciones=[{"clave": "x", "seccion": "Seguridad"}]), self.config)
         self.assertTrue(any("nada para completar" in e for e in salida["errores"]))
+
+    def test_filas_y_seleccion_se_validan_como_declaracion(self):
+        filas = [{"apellido": "PACHECO", "nombre": "Diego", "observacion": "Coautor"}]
+        ok = self.datos(secciones=[{"clave": "rec", "seccion": "Recusación", "filas": filas},
+                                   {"clave": "fin", "seccion": "Otras Fuentes de Financiamiento",
+                                    "seleccion": {"campo": "otrosFinanciamientos", "valores": ["1", "2"]}}])
+        self.assertEqual(PIP.validar_pip(ok, self.config)["errores"], [])
+        vacia = self.datos(secciones=[{"clave": "rec", "seccion": "Recusación",
+                                       "filas": [{"apellido": "PACHECO", "nombre": "", "observacion": "x"}]}])
+        self.assertTrue(any("no se estiman" in e for e in PIP.validar_pip(vacia, self.config)["errores"]))
+        sin_campo = self.datos(secciones=[{"clave": "fin", "seccion": "Otras Fuentes de Financiamiento",
+                                           "seleccion": {"valores": ["1", "1"]}}])
+        self.assertTrue(any("'seleccion'" in e for e in PIP.validar_pip(sin_campo, self.config)["errores"]))
 
     def test_linea_base_del_simulador_no_habilita_el_sitio_real(self):
         with self.assertRaises(SystemExit):
@@ -792,6 +831,65 @@ class TestPipSimulado(unittest.TestCase):
         codigo, recibo = self.pip_cargar("--guardar")
         self.assertEqual((codigo, recibo["resultados"][0]["resultado"]), (0, "guardado"), recibo)
         self.assertEqual(recibo["estados"]["Aval de la autoridad máxima (PDF firmado)"], "Ok")
+
+    def test_pip_seccion_en_ok_con_datos_viejos_se_actualiza_y_la_igual_no_se_toca(self):
+        datos = self.datos()
+        datos["secciones"] = [datos["secciones"][0]]
+        self.pip_preparar(datos)
+        self.assertEqual(self.pip_cargar("--guardar")[1]["resultados"][0]["resultado"], "guardado")
+        # El plan cambió el título: la sección sigue en "Ok", pero con el título viejo.
+        datos["secciones"][0]["campos"]["tituloProyecto"] = "Título nuevo del plan"
+        self.pip_preparar(datos)
+        codigo, recibo = self.pip_cargar("--guardar")
+        r = recibo["resultados"][0]
+        self.assertEqual((codigo, r["resultado"], r["difiere"]), (0, "guardado", ["campo tituloProyecto"]), recibo)
+        cargado = self.servidor.estado.tramite["cargado"]["Datos del proyecto"]
+        self.assertEqual(cargado["tituloProyecto"], ["Título nuevo del plan"])
+        # Mismo contenido: la huella del log lo da por hecho.
+        self.assertEqual(self.pip_cargar("--guardar")[1]["solicitados"], 0)
+        # Sin log (otra carpeta de trabajo): se compara contra el sitio y no se guarda nada.
+        (self.dir / "estado-pip.jsonl").unlink()
+        posts_antes = len(self.posts())
+        codigo, recibo = self.pip_cargar("--guardar")
+        self.assertEqual(recibo["resultados"][0]["resultado"], "ya-estaba", recibo)
+        self.assertNotIn("/eva/solicitudDatosProyecto.do", self.posts()[posts_antes:])
+
+    def test_pip_recusacion_por_filas(self):
+        filas = [{"apellido": "PACHECO", "nombre": "Diego", "observacion": "Coautor (2026)"},
+                 {"apellido": "SANTELLA", "nombre": "Agustín", "observacion": "Coautor (2026)"}]
+        self.pip_preparar(self.datos(secciones=[{"clave": "rec", "seccion": "Recusación", "filas": filas}]))
+        codigo, recibo = self.pip_cargar()
+        self.assertEqual((codigo, recibo["resultados"][0]["resultado"]), (0, "en-seco"), recibo)
+        self.assertNotIn("/eva/solicitudRecusacion.do", self.posts())
+        codigo, recibo = self.pip_cargar("--guardar")
+        self.assertEqual((codigo, recibo["resultados"][0]["resultado"]), (0, "guardado"), recibo)
+        self.assertEqual(self.servidor.estado.tramite["cargado"]["Recusación"],
+                         [["PACHECO", "Diego", "Coautor (2026)"], ["SANTELLA", "Agustín", "Coautor (2026)"]])
+
+    def test_pip_seleccion_paginada_en_seco_no_hace_clic_y_al_guardar_tilda_todo(self):
+        pedidos = ["9003", "9015", "9024"]  # uno por página
+        sel = {"clave": "fin", "seccion": "Otras Fuentes de Financiamiento",
+               "seleccion": {"campo": "otrosFinanciamientos", "valores": pedidos}}
+        self.pip_preparar(self.datos(secciones=[sel]))
+        codigo, recibo = self.pip_cargar()
+        r = recibo["resultados"][0]
+        self.assertEqual((codigo, r["resultado"]), (0, "en-seco"), recibo)
+        self.assertIn("3 por tildar", " ".join(r["avisos"]))
+        self.assertNotIn("/eva/solicitudOtrasFuentes.do", self.posts())  # cada clic guarda: en seco, ninguno
+        codigo, recibo = self.pip_cargar("--guardar")
+        self.assertEqual((codigo, recibo["resultados"][0]["resultado"]), (0, "guardado"), recibo)
+        self.assertEqual(self.servidor.estado.tramite["financiamientos"], set(pedidos))
+
+    def test_pip_seleccion_con_valor_inexistente_es_error(self):
+        sel = {"clave": "fin", "seccion": "Otras Fuentes de Financiamiento",
+               "seleccion": {"campo": "otrosFinanciamientos", "valores": ["9003", "1234"]}}
+        self.pip_preparar(self.datos(secciones=[sel]))
+        codigo, recibo = self.pip_cargar("--guardar")
+        r = recibo["resultados"][0]
+        self.assertEqual((codigo, r["resultado"]), (1, "error"), recibo)
+        self.assertIn("1234", r["detalle"])
+        # Se valida todo antes del primer clic: no queda nada guardado a medias.
+        self.assertEqual(self.servidor.estado.tramite.get("financiamientos", set()), set())
 
     def test_pip_guardado_silencioso_se_informa_como_no_guardado(self):
         datos = self.datos()

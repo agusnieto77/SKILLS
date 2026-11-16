@@ -23,6 +23,7 @@ Contador de estados: la cantidad exacta la da la tabla del trámite (el módulo 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -476,12 +477,34 @@ def validar_pip(datos: dict, config: dict) -> dict:
                 item["miembros"] = [{"nombre": str(m.get("nombre", "")).strip(),
                                      "dedicacion": str(m.get("dedicacion", "")).strip(),
                                      **({"rol": m["rol"]} if m.get("rol") else {})} for m in miembros]
-        if not item["campos"] and not s.get("archivo") and not grilla and miembros is None:
+        filas = s.get("filas")
+        if filas is not None:
+            if not isinstance(filas, list) or not filas or not all(isinstance(x, dict) and x for x in filas):
+                errores.append(f"{clave}: 'filas' debe ser una lista no vacía de dicts columna -> valor")
+            else:
+                columnas = list(filas[0])
+                for n, fila in enumerate(filas, 1):
+                    if list(fila) != columnas:
+                        errores.append(f"{clave}: la fila {n} no tiene las mismas columnas que la primera ({columnas})")
+                    vacias = [c for c in columnas if not str(fila.get(c) or "").strip()]
+                    if vacias:
+                        errores.append(f"{clave}: fila {n} con columnas vacías (no se estiman): {', '.join(vacias)}")
+                item["filas"] = [{c: str(fila.get(c) or "").strip() for c in columnas} for fila in filas]
+        seleccion = s.get("seleccion")
+        if seleccion is not None:
+            campo = str((seleccion or {}).get("campo") or "").strip()
+            valores = [str(v).strip() for v in (seleccion or {}).get("valores") or []]
+            if not campo or not valores or not all(valores) or len(set(valores)) != len(valores):
+                errores.append(f"{clave}: 'seleccion' requiere 'campo' y 'valores' (lista no vacía, sin repetidos)")
+            item["seleccion"] = {"campo": campo, "valores": valores}
+        if not item["campos"] and not s.get("archivo") and not grilla and miembros is None \
+                and filas is None and seleccion is None:
             if s.get("guardar_vacio"):
                 item["guardar_vacio"] = True
                 item["avisos"].append("guardado vacío a pedido explícito (nada para declarar)")
             else:
-                errores.append(f"{clave}: sin 'campos', 'archivo', 'grilla' ni 'miembros': nada para completar")
+                errores.append(f"{clave}: sin 'campos', 'archivo', 'grilla', 'miembros', 'filas' ni 'seleccion': "
+                               "nada para completar")
         archivo = s.get("archivo")
         if archivo:
             ruta = Path(str(archivo.get("ruta") or ""))
@@ -633,22 +656,26 @@ def planificar_grupo(filas: list[dict], miembros: list[dict]) -> tuple[list[dict
 
 
 def _leer_grupo(f: B.Formulario) -> list[dict]:
-    """Lee la grilla de integrantes con el rol y la dedicación actuales de cada fila."""
+    """Lee la grilla de integrantes: rol, dedicación y si está habilitado (casilla HAB)."""
     return f.page.evaluate("""() => Array.from(document.querySelectorAll("select[name='tipoGrupoRol']")).map((sel, i) => {
         const tr = sel.closest('tr');
         const tds = tr ? Array.from(tr.cells).map(td => (td.innerText || '').trim()).join(' | ') : '';
         const pid = (Array.from(sel.options).map(o => o.value).find(v => /^\\d+-\\d+$/.test(v)) || '').split('-')[0];
         const ded = tr ? (tr.querySelector("input[name='porcentajeDedicacion']") || {}).value : '';
-        return {indice: i, texto: tds.slice(0, 200), pid: pid, ded: ded, rol: sel.value || ''};
+        const hab = tr ? tr.querySelector("input[type=checkbox][name='seleccionadas']") : null;
+        return {indice: i, texto: tds.slice(0, 200), pid: pid, ded: ded, rol: sel.value || '',
+                hab: hab ? hab.checked : true};
     })""")
 
 
 def grupo_al_dia(filas: list[dict], miembros: list[dict]) -> tuple[bool, list[str]]:
-    """Dice si la grilla ya refleja las dedicaciones (y roles) pedidos. Pura: testeable."""
+    """Dice si la grilla ya refleja lo pedido: habilitado, dedicación y rol. Pura: testeable."""
     plan, avisos = planificar_grupo(filas, miembros)
     por_indice = {r["indice"]: r for r in filas}
     for p in plan:
         actual = por_indice.get(p["indice"], {})
+        if not actual.get("hab", True):
+            return False, avisos
         if str(actual.get("ded") or "") != p["dedicacion"]:
             return False, avisos
         if p["valor_rol"] and actual.get("rol") != p["valor_rol"]:
@@ -657,17 +684,139 @@ def grupo_al_dia(filas: list[dict], miembros: list[dict]) -> tuple[bool, list[st
 
 
 def _aplicar_grupo(f: B.Formulario, miembros: list[dict]) -> list[str]:
-    """Fija dedicación (y rol si se indica) por fila de la grilla, emparejando por nombre.
+    """Habilita (casilla HAB) y fija dedicación y rol por fila de la grilla, emparejando por nombre.
 
-    Devuelve avisos para los miembros que no figuran en la grilla (no se inventan).
+    Sin la casilla HAB la persona no integra el proyecto aunque figure en la grilla.
+    Devuelve avisos para los miembros que no figuran en la grilla (no se inventan) y para
+    los que quedarían sin rol.
     """
     filas = _leer_grupo(f)
     plan, avisos = planificar_grupo(filas, miembros)
+    por_indice = {r["indice"]: r for r in filas}
     for p in plan:
+        hab = f.page.locator(f"input[type=checkbox][name='seleccionadas'][value='{p['pid']}']")
+        if hab.count() and not hab.first.is_checked() and hab.first.is_enabled():
+            hab.first.check()
         if p["valor_rol"]:
             f.page.locator("select[name='tipoGrupoRol']").nth(p["indice"]).select_option(p["valor_rol"])
+        elif por_indice[p["indice"]]["rol"].endswith("-0"):
+            avisos.append(f"sin rol en la grilla: {por_indice[p['indice']]['texto'][:60]} (indicar 'rol')")
         f.page.locator("input[name='porcentajeDedicacion']").nth(p["indice"]).fill(p["dedicacion"])
     return avisos
+
+
+def _normal(texto) -> str:
+    return re.sub(r"\s+", " ", str(texto or "")).strip()
+
+
+def _leer_valores(f: B.Formulario, nombres: list[str]) -> dict:
+    """Valor actual de cada control por name: texto, select (valor y texto), radios y casillas."""
+    return f.page.evaluate("""(nombres) => Object.fromEntries(nombres.map(n => {
+        const todos = Array.from(document.getElementsByName(n));
+        const visibles = todos.filter(e => e.type !== 'hidden');
+        const els = visibles.length ? visibles : todos;
+        if (!els.length) return [n, null];
+        const e = els[0];
+        if (e.type === 'radio') return [n, {valor: (els.find(x => x.checked) || {}).value || ''}];
+        if (e.type === 'checkbox') return [n, {valor: els.filter(x => x.checked).map(x => x.value), casilla: e.checked}];
+        if (e.tagName === 'SELECT') {
+            const o = e.options[e.selectedIndex] || {};
+            return [n, {valor: o.value || '', texto: (o.text || '').trim()}];
+        }
+        return [n, {valor: e.value || ''}];
+    }))""", nombres)
+
+
+def diferencias_campos(actual: dict, deseado: dict) -> list[str]:
+    """Nombres de los campos cuyo valor cargado no coincide con el pedido. Pura: testeable."""
+    distintos = []
+    for nombre, valor in deseado.items():
+        a = actual.get(nombre)
+        if a is None:
+            distintos.append(nombre)
+            continue
+        if isinstance(valor, dict) and "fecha" in valor:
+            igual = _normal(a.get("valor")) == _normal(valor["fecha"])
+        elif isinstance(valor, dict) and "valor" in valor:
+            igual = str(a.get("valor")) == str(valor["valor"])
+        elif isinstance(valor, dict) and "etiqueta" in valor:
+            igual = _rotulo(_normal(a.get("texto"))) == _rotulo(_normal(valor["etiqueta"]))
+        elif isinstance(valor, bool):
+            igual = bool(a.get("casilla")) == valor
+        elif isinstance(valor, list):
+            igual = sorted(map(str, valor)) == sorted(map(str, a.get("valor") or []))
+        else:
+            igual = _normal(a.get("valor")) == _normal(valor)
+        if not igual:
+            distintos.append(nombre)
+    return distintos
+
+
+def _leer_filas(f: B.Formulario, columnas: list[str]) -> list[list[str]]:
+    """Grilla de filas repetidas (p. ej. recusación: apellido/nombre/observacion): una lista por fila."""
+    valores = f.page.evaluate("""(cols) => cols.map(n => Array.from(document.getElementsByName(n))
+        .filter(e => e.type !== 'hidden').map(e => e.value || ''))""", columnas)
+    largo = min((len(v) for v in valores), default=0)
+    return [[valores[c][i] for c in range(len(columnas))] for i in range(largo)]
+
+
+def filas_al_dia(actual: list[list[str]], deseadas: list[dict]) -> bool:
+    """Las filas no vacías cargadas son exactamente las pedidas, en orden. Pura: testeable."""
+    llenas = [[_normal(x) for x in fila] for fila in actual if any(_normal(x) for x in fila)]
+    return llenas == [[_normal(v) for v in d.values()] for d in deseadas]
+
+
+def _llenar_filas(f: B.Formulario, deseadas: list[dict]) -> None:
+    """Escribe las filas pedidas en orden y vacía las sobrantes (la lista declarada es la completa)."""
+    columnas = list(deseadas[0])
+    disponibles = len(_leer_filas(f, columnas))
+    if len(deseadas) > disponibles:
+        raise ErrorPip(f"la pantalla ofrece {disponibles} filas y se piden {len(deseadas)}")
+    for c in columnas:
+        cajas = f.page.locator(f"[name='{c}']:not([type=hidden])")
+        for i in range(disponibles):
+            cajas.nth(i).fill(deseadas[i][c] if i < len(deseadas) else "")
+
+
+def _pagina_siguiente(s: B.Sesion) -> bool:
+    """Avanza la lista paginada por su enlace "Siguiente"; False si no hay más páginas."""
+    enlace = s.page.locator("a", has_text=re.compile(r"^\s*\[?Siguiente"))
+    if not enlace.count():
+        return False
+    with s.page.expect_navigation(wait_until="load", timeout=60_000):
+        enlace.first.click()
+    return True
+
+
+def recorrer_seleccion(s: B.Sesion, campo: str, valores: list[str], tildar: bool,
+                       max_pasos: int = 2000) -> dict:
+    """Recorre una lista paginada de casillas desde la página abierta.
+
+    Con `tildar`, hace clic en cada casilla pedida que esté sin tildar; en SIGEVA cada clic
+    envía el formulario y lo guarda (por eso en seco no se hace clic). Tras cada clic se sigue
+    desde la página a la que vuelva el sitio. Nunca destilda: lo que ya estaba queda.
+    Devuelve {tildados, sin_tildar, no_encontrados} (listas de valores).
+    """
+    objetivo = set(valores)
+    estado: dict[str, bool] = {}
+    tildados: list[str] = []
+    for _ in range(max_pasos):
+        pagina = s.page.evaluate("""(c) => Object.fromEntries(Array.from(document.getElementsByName(c))
+            .filter(e => e.type === 'checkbox').map(e => [e.value, e.checked]))""", campo)
+        estado.update(pagina)
+        pendientes = [v for v, marcado in pagina.items() if v in objetivo and not marcado]
+        if tildar and pendientes:
+            with s.page.expect_navigation(wait_until="load", timeout=60_000):
+                s.page.locator(f"input[name='{campo}'][value='{pendientes[0]}']").first.click()
+            tildados.append(pendientes[0])
+            continue
+        if not _pagina_siguiente(s):
+            break
+    else:
+        raise ErrorPip(f"la lista de '{campo}' no terminó de recorrerse en {max_pasos} pasos")
+    return {"tildados": tildados,
+            "sin_tildar": [v for v in valores if v in estado and not estado[v]],
+            "no_encontrados": [v for v in valores if v not in estado]}
 
 
 def _abrir_adjunto(s: B.Sesion, fila: dict, tipo: str) -> None:
@@ -739,22 +888,83 @@ def _abrir_y_leer(s: B.Sesion, base: dict, codigo: str | None, seccion: str) -> 
                                            f"Secciones vistas: {disponibles}"}))
 
 
+def huella(item: dict) -> str:
+    """Huella del contenido pedido: si cambian los datos de una sección, deja de darse por hecha."""
+    contenido = {k: v for k, v in item.items() if k != "avisos"}
+    return hashlib.sha1(json.dumps(contenido, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:12]
+
+
+def _hechos(ruta: Path) -> dict[str, str]:
+    """clave -> huella de la última vez que quedó al día ("guardado" o "ya-estaba").
+
+    Las entradas sin huella (de versiones anteriores) no cuentan: esas secciones se vuelven a
+    comparar contra el sitio, que es barato y no guarda nada si ya coinciden.
+    """
+    hechos: dict[str, str] = {}
+    if not ruta.exists():
+        return hechos
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(linea)
+        except json.JSONDecodeError:
+            continue
+        if e.get("clave") and e.get("resultado") in ("guardado", "ya-estaba") and e.get("huella"):
+            hechos[e["clave"]] = e["huella"]
+    return hechos
+
+
+def _comparable(item: dict) -> bool:
+    """Tipos cuyo contenido se puede releer del formulario para saber si ya está al día."""
+    return bool(item.get("campos") or item.get("filas") or item.get("seleccion")) or item.get("miembros") is not None
+
+
+def _diferencias(s: B.Sesion, f: B.Formulario, item: dict) -> tuple[list[str], list[str]]:
+    """Compara lo pedido con lo cargado (solo lectura). Devuelve ([diferencias], [avisos])."""
+    difiere: list[str] = []
+    avisos: list[str] = []
+    if item.get("miembros") is not None:
+        al_dia, avisos = grupo_al_dia(_leer_grupo(f), item["miembros"])
+        if not al_dia:
+            difiere.append("grupo")
+    if item.get("campos"):
+        nombres = list(item["campos"])
+        difiere += [f"campo {n}" for n in diferencias_campos(_leer_valores(f, nombres), item["campos"])]
+    if item.get("filas"):
+        columnas = list(item["filas"][0])
+        if not filas_al_dia(_leer_filas(f, columnas), item["filas"]):
+            difiere.append("filas")
+    if item.get("seleccion"):
+        r = recorrer_seleccion(s, item["seleccion"]["campo"], item["seleccion"]["valores"], tildar=False)
+        if r["sin_tildar"] or r["no_encontrados"]:
+            difiere.append(f"selección: {len(r['sin_tildar'])} sin tildar, {len(r['no_encontrados'])} no encontrados")
+    return difiere, avisos
+
+
 def procesar_item(s: B.Sesion, base: dict, codigo: str | None, item: dict, guardar: bool) -> dict:
     resultado = {"clave": item["clave"], "seccion": item["seccion"]}
     estados, fila = _abrir_y_leer(s, base, codigo, item["seccion"])
+    en_ok = fila["estado"] == "Ok"
+    if en_ok and not _comparable(item):
+        resultado["resultado"] = "ya-estaba"
+        return resultado
     if item.get("archivo"):
         _abrir_adjunto(s, fila, str(item["archivo"].get("tipo") or ""))
     else:
         _abrir_formulario(s, fila)
     f = B.Formulario(s)
     avisos: list[str] = []
-    if item.get("miembros") is not None:
-        al_dia, avisos = grupo_al_dia(_leer_grupo(f), item["miembros"])
-        if al_dia:
-            resultado["avisos"] = avisos
-            resultado["resultado"] = "ya-estaba"
+    if en_ok:
+        # "Ok" no significa "al día": se relee lo cargado y solo se guarda si difiere.
+        difiere, avisos = _diferencias(s, f, item)
+        if not difiere:
+            resultado.update({"avisos": avisos, "resultado": "ya-estaba"})
             return resultado
-        avisos += _aplicar_grupo(f, item["miembros"])
+        resultado["difiere"] = difiere
+        if item.get("seleccion"):
+            _abrir_formulario(s, fila)  # el recorrido de la comparación dejó otra página abierta
+            f = B.Formulario(s)
+    if item.get("miembros") is not None:
+        avisos = _aplicar_grupo(f, item["miembros"])
     if item.get("campos"):
         fechas = B.aplicar_campos(f, item["campos"])
         f.fijar_fechas(fechas)
@@ -762,6 +972,22 @@ def procesar_item(s: B.Sesion, base: dict, codigo: str | None, item: dict, guard
         _resolver_dependientes(f, item)
     if item.get("grilla"):
         _llenar_grilla(f, item["grilla"])
+    if item.get("filas"):
+        _llenar_filas(f, item["filas"])
+    if item.get("seleccion"):
+        # Cada clic en estas casillas ya envía el formulario y guarda. Primero se recorre sin tocar
+        # nada (y se corta si falta algún valor); los clics, solo con --guardar y con todo validado.
+        campo, valores = item["seleccion"]["campo"], item["seleccion"]["valores"]
+        sel = recorrer_seleccion(s, campo, valores, tildar=False)
+        if sel["no_encontrados"]:
+            raise ErrorPip(f"la lista no ofrece {len(sel['no_encontrados'])} de los valores pedidos: "
+                           f"{', '.join(sel['no_encontrados'][:10])}")
+        if guardar and sel["sin_tildar"]:
+            _abrir_formulario(s, fila)
+            sel = recorrer_seleccion(s, campo, valores, tildar=True)
+        ya = len(valores) - len(sel["tildados"]) - len(sel["sin_tildar"])
+        avisos.append(f"selección: {ya} ya tildados, {len(sel['tildados'])} tildados ahora, "
+                      f"{len(sel['sin_tildar'])} por tildar")
     if item.get("archivo"):
         _adjuntar_pip(f, item)
     resultado["avisos"] = avisos
@@ -769,8 +995,11 @@ def procesar_item(s: B.Sesion, base: dict, codigo: str | None, item: dict, guard
     if not guardar:
         resultado["resultado"] = "en-seco"
         return resultado
+    # Las pantallas traen notas fijas con el mismo verbo que los errores ("(2) Debe seleccionar a las
+    # personas que desea habilitar..."): solo cuenta como rechazo un mensaje que no estaba antes.
+    previos = {m.group(0) for m in B.RE_ERROR_FORM.finditer(B._texto_pagina(s))}
     cuerpo = B._apretar_guardar(s, "Guardar")
-    error = B.RE_ERROR_FORM.search(cuerpo)
+    error = next((m for m in B.RE_ERROR_FORM.finditer(cuerpo) if m.group(0) not in previos), None)
     if error:
         resultado.update({"resultado": "rechazado", "detalle": error.group(0)[:200],
                           "captura": s.captura(f"pip-rechazado-{item['clave']}")})
@@ -780,6 +1009,14 @@ def procesar_item(s: B.Sesion, base: dict, codigo: str | None, item: dict, guard
     if not fila_ok or fila_ok["estado"] != "Ok":
         resultado.update({"resultado": "no-guardado", "captura": s.captura(f"pip-no-guardado-{item['clave']}")})
         return resultado
+    if _comparable(item):
+        # Releer lo guardado: el estado "Ok" no prueba que el contenido sea el pedido.
+        _abrir_formulario(s, fila_ok)
+        difiere, _ = _diferencias(s, B.Formulario(s), item)
+        if difiere:
+            resultado.update({"resultado": "no-guardado", "detalle": f"releído distinto: {'; '.join(difiere)[:300]}",
+                              "captura": s.captura(f"pip-no-guardado-{item['clave']}")})
+            return resultado
     resultado["resultado"] = "guardado"
     return resultado
 
@@ -794,9 +1031,9 @@ def cmd_pip_cargar(args) -> int:
     datos = B.leer_json(args.datos, None)
     if not datos or datos.get("errores"):
         raise SystemExit(f"{args.datos} tiene errores o no existe: correr 'pip-preparar' primero")
-    hechos = estado_log.guardados()
+    hechos = _hechos(trabajo / "estado-pip.jsonl")
     cola = [i for i in datos["items"] if not (args.claves and i["clave"] not in args.claves)
-            and i["clave"] not in hechos][:B.LIMITE_MAXIMO]
+            and hechos.get(i["clave"]) != huella(i)][:B.LIMITE_MAXIMO]
     recibo = {"comando": "pip-cargar", "modo": "guardar" if args.guardar else "en-seco",
               "inicio_utc": B.ahora_utc(), "tramite": datos.get("tramite"), "solicitados": len(cola),
               "resultados": [], "motivo_fin": "completo"}
@@ -834,6 +1071,7 @@ def cmd_pip_cargar(args) -> int:
                 recibo["motivo_fin"] = f"corte de tanda: {r.get('resultado')}"
                 log(f"    CORTE: {str(e)[:200]}")
                 break
+            r["huella"] = huella(item)
             estado_log.registrar(r)
             recibo["resultados"].append(r)
             log(f"    {r['resultado']}" + (f": {r.get('detalle', '')[:160]}" if r.get("detalle") else ""))

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.0 — 2026-11-12
+
+- `pip-cargar` ya no da por buenas las secciones en "Ok": las que tienen `campos`, `filas`, `seleccion` o
+  `miembros` se reabren y se comparan con lo pedido; solo se guarda lo que difiere y el recibo dice qué.
+  Después de cada Guardar se relee el formulario: "Ok" con contenido distinto es `no-guardado`.
+- Nuevos tipos en `pip.json`: `filas` (grillas de filas repetidas, como la recusación) y `seleccion`
+  (casillas paginadas que guardan al clic, como Otras fuentes de financiamiento: en seco no se hace
+  ningún clic y con `--guardar` se valida todo antes del primero).
+- `estado-pip.jsonl` guarda la `huella` del contenido: un cambio en los datos vuelve a encolar la sección.
+- Grupo: cada integrante declarado se habilita (casilla HAB): quien se incorpora con el código del trámite
+  aparece sin rol y sin habilitar. Se avisa si alguien quedaría sin rol.
+- Trampas nuevas documentadas: el resumen admite 2500 caracteres y SIGEVA borra sus saltos de línea sin
+  dejar espacio (la relectura posterior al guardado lo detectó en el sitio real).
+- Corrige la regresión que dejaba de saltear las secciones en "Ok" sin contenido comparable (grillas,
+  adjuntos). Simulador: enlaces de la tabla siempre disponibles (como el sitio real), formularios que
+  muestran lo cargado, recusación y otras fuentes paginadas.
+
 ## 1.2.0 — 2026-11-12
 
 - Módulo de convocatorias (presentación/solicitud, rol 72): nuevos comandos `pip-mapear`, `pip-verificar`,

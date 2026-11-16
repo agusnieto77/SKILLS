@@ -340,7 +340,8 @@ def _tabla_estados(estado: "Estado") -> str:
     filas = []
     for seccion, info in ESTADOS_PIP.items():
         estado_actual = estado.tramite["estados"].get(seccion, "Sin Datos")
-        enlace = (f"<a href='{info['ruta']}'>{info['etiqueta']}</a>" if info.get("ruta") and estado_actual != "Ok" else info["etiqueta"])
+        # Como el sitio real: el enlace sigue disponible con la sección en "Ok" (se puede corregir).
+        enlace = (f"<a href='{info['ruta']}'>{info['etiqueta']}</a>" if info.get("ruta") else info["etiqueta"])
         clase = "ok" if estado_actual == "Ok" else "sin-datos"
         filas.append(f"<tr><td>{seccion}</td><td class='{clase}'>{estado_actual}</td><td>{enlace}</td></tr>")
     filas.append("<tr><td>Presentación electrónica</td><td><a href='archivoDinamico.do?tipoPdf=1'>PDF</a></td></tr>")
@@ -356,29 +357,71 @@ def _tramite(estado: "Estado") -> bytes:
 
 
 def _form_pip(seccion: str, ruta: str, cuerpo: str) -> bytes:
+    # Como el sitio real: notas al pie fijas con el mismo verbo que los mensajes de error.
+    nota = "<div class='nota'>(2) Debe seleccionar a las personas que desea habilitar para que sean integrantes del proyecto.</div>"
     return _pagina(f"<form method='post' enctype='multipart/form-data' action='{ruta}'><input type='hidden' name='seccion' value='{seccion}'>"
                    f"<table>{cuerpo}</table><input type='submit' name='btnSubmit' value='Guardar'>"
-                   "<input type='submit' name='btnSubmit' value='Volver'></form>", seccion)
+                   f"<input type='submit' name='btnSubmit' value='Volver'></form>{nota}", seccion)
 
 
 def form_datos_proyecto(valores: dict | None = None) -> bytes:
-    v = valores or {}
+    """Muestra lo cargado (valores = campos guardados, listas como los POST)."""
+    v = {k: (x[0] if isinstance(x, list) and x else x) for k, x in (valores or {}).items()}
     campos = "".join([
-        _fila("Título del proyecto:*", f"<input name='tituloProyecto' value='{html.escape(v.get('tituloProyecto', ''))}'>"),
-        _fila("Resumen:*", "<textarea name='resumenProyecto'></textarea>"),
-        _fila("Fecha de inicio prevista:*", "<input name='fechaInicio' class='calendar-year-month hasDatepicker'>"
+        _fila("Título del proyecto:*", f"<input name='tituloProyecto' value='{html.escape(v.get('tituloProyecto') or '')}'>"),
+        _fila("Resumen:*", f"<textarea name='resumenProyecto'>{html.escape(v.get('resumenProyecto') or '')}</textarea>"),
+        _fila("Fecha de inicio prevista:*", "<input name='fechaInicio' class='calendar-year-month hasDatepicker' "
+                                            f"value='{html.escape(v.get('fechaInicio') or '')}'>"
                                             "<input type='hidden' name='fechaInicio' value=''>"),
     ])
     return _form_pip("Datos del proyecto", "/eva/solicitudDatosProyecto.do", campos)
 
 
-def form_aspectos() -> bytes:
+def form_aspectos(valores: dict | None = None) -> bytes:
+    """Muestra lo cargado, como el sitio real (valores = campos guardados, listas como los POST)."""
+    v = {k: (x[0] if isinstance(x, list) and x else x) for k, x in (valores or {}).items()}
+    radios = " ".join(f"<input type='radio' name='usaComiteEtica' value='{val}'"
+                      f"{' checked' if v.get('usaComiteEtica') == val else ''}>{txt}" for val, txt in (("1", "Sí"), ("2", "No")))
     campos = "".join([
-        _fila("¿Requiere dictamen de comité de ética?:*",
-              "<input type='radio' name='usaComiteEtica' value='1'>Sí <input type='radio' name='usaComiteEtica' value='2'>No"),
-        _fila("Fundamentación:*", "<textarea name='fundamentacionEtica'></textarea>"),
+        _fila("¿Requiere dictamen de comité de ética?:*", radios),
+        _fila("Fundamentación:*", f"<textarea name='fundamentacionEtica'>{html.escape(v.get('fundamentacionEtica') or '')}</textarea>"),
     ])
     return _form_pip("Aspectos éticos", "/eva/solicitudAspectosEticos.do", campos)
+
+
+FILAS_RECUSACION = 10  # como el sitio real: 10 filas fijas apellido/nombre/observacion
+
+
+def form_recusacion(filas: list[list[str]] | None = None) -> bytes:
+    filas = (filas or []) + [["", "", ""]] * FILAS_RECUSACION
+    cuerpo = "".join(
+        "<tr><td><input type='hidden' name='id' value='null'>"
+        f"<input name='apellido' value='{html.escape(a)}'></td><td><input name='nombre' value='{html.escape(n)}'></td>"
+        f"<td><input name='observacion' value='{html.escape(o)}'></td></tr>"
+        for a, n, o in filas[:FILAS_RECUSACION])
+    return _form_pip("Recusación", "/eva/solicitudRecusacion.do",
+                     "<tr><th>APELLIDO</th><th>NOMBRE</th><th>FUNDAMENTO</th></tr>" + cuerpo)
+
+
+FINANCIAMIENTOS = [str(9001 + i) for i in range(25)]  # 3 páginas de 10, como la lista real (218 en 22)
+
+
+def form_otras_fuentes(estado: "Estado", pagina: int) -> bytes:
+    """Como el sitio real: cada clic en un checkbox envía el formulario (actualizar()) y lo guarda."""
+    tildados = estado.tramite.setdefault("financiamientos", set())
+    tramo = FINANCIAMIENTOS[(pagina - 1) * 10: pagina * 10]
+    filas = "".join(
+        f"<tr><td><input type='checkbox' name='otrosFinanciamientos' value='{i}' onclick='actualizar()'"
+        f"{' checked' if i in tildados else ''}><input type='hidden' name='listado' value='{i}'></td>"
+        f"<td>PROYECTO {i}</td></tr>" for i in tramo)
+    paginas = (len(FINANCIAMIENTOS) + 9) // 10
+    siguiente = (f"<a href='solicitudOtrasFuentes.do?d-1-p={pagina + 1}'>Siguiente</a>" if pagina < paginas else "Siguiente")
+    return _pagina(
+        "<script>function actualizar(){document.forms[0].actualizado.value='1';document.forms[0].submit();}</script>"
+        "<form method='post' action='/eva/solicitudOtrasFuentes.do'>"
+        f"<input type='submit' name='btnSubmit' value='Guardar'><table>{filas}</table>{siguiente}"
+        f"<input type='hidden' name='d-1-p' value='{pagina}'><input type='hidden' name='actualizado' value=''></form>",
+        "Otras fuentes")
 
 
 SECCIONES_ADJUNTO = {"1": "Plan de trabajo (PDF)", "105": "Aval de la autoridad máxima (PDF firmado)"}
@@ -491,9 +534,13 @@ def crear_manejador(estado: Estado):
                     r = next(x for x in estado.registros["premio"] if str(x["id"]) == q["id"][0])
                     return self._responder(form_premio(r))
             if ruta == "/eva/solicitudDatosProyecto.do":
-                return self._responder(form_datos_proyecto())
+                return self._responder(form_datos_proyecto(estado.tramite.get("cargado", {}).get("Datos del proyecto")))
             if ruta == "/eva/solicitudAspectosEticos.do":
-                return self._responder(form_aspectos())
+                return self._responder(form_aspectos(estado.tramite.get("cargado", {}).get("Aspectos éticos")))
+            if ruta == "/eva/solicitudRecusacion.do":
+                return self._responder(form_recusacion(estado.tramite.get("cargado", {}).get("Recusación")))
+            if ruta == "/eva/solicitudOtrasFuentes.do":
+                return self._responder(form_otras_fuentes(estado, int(q.get("d-1-p", ["1"])[0])))
             if ruta == "/eva/cArchivosAdjuntos.do":
                 return self._responder(_lista_adjuntos())
             return self._responder(_pagina("No encontrado"), 404)
@@ -601,6 +648,27 @@ def crear_manejador(estado: Estado):
                         "Debe seleccionar si requiere dictamen de comit&eacute; de &eacute;tica"))
                 estado.completar_seccion("Aspectos éticos", {k: f.get(k, []) for k in f if k != "btnSubmit"})
                 return self._redirigir("/eva/index.do?tramiteid=7")
+            if ruta == "/eva/solicitudRecusacion.do" and boton == "Guardar":
+                filas = [list(t) for t in zip(f.get("apellido", []), f.get("nombre", []), f.get("observacion", []))
+                         if any(x.strip() for x in t)]
+                if not filas:
+                    # Como el sitio real: el Guardar vacío no marca "Ok".
+                    return self._responder(form_recusacion())
+                estado.completar_seccion("Recusación", filas)
+                # Como el Grupo real: guarda y vuelve a la misma pantalla, con su nota al pie fija.
+                return self._responder(form_recusacion(filas))
+            if ruta == "/eva/solicitudOtrasFuentes.do":
+                tildados = estado.tramite.setdefault("financiamientos", set())
+                if (f.get("actualizado") or [""])[0] == "1":
+                    # Cada clic guarda los de la página (listado); el sitio vuelve a la primera página.
+                    marcados = set(f.get("otrosFinanciamientos", []))
+                    for i in f.get("listado", []):
+                        (tildados.add if i in marcados else tildados.discard)(i)
+                    return self._responder(form_otras_fuentes(estado, 1))
+                if boton == "Guardar" and tildados:
+                    estado.completar_seccion("Otras Fuentes de Financiamiento", sorted(tildados))
+                    return self._redirigir("/eva/index.do?tramiteid=7")
+                return self._responder(form_otras_fuentes(estado, 1))
             if ruta == "/eva/cArchivosAdjuntos.do" and boton == "Adjuntar":
                 tipo = (f.get("tipoArchivo") or [""])[0]
                 if tipo not in SECCIONES_ADJUNTO:

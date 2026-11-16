@@ -1,6 +1,6 @@
 # Mapa del módulo de convocatorias (Postulante 11220260100119CO Abierto - 20/10/2026)
 
-- Origen: **real** (capturado 2026-11-12T13:19:53+00:00)
+- Origen: **real** (capturado 2026-11-12T21:53:11+00:00)
 - Inicio del módulo: `index.do`
 - Pantalla del trámite: `index.do?tramiteid=752068` (tabla de estados: `sin id`)
 
