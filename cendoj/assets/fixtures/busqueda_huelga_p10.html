@@ -1,0 +1,685 @@
+<!DOCTYPE aside PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<aside xmlns:autn="http://schemas.autonomy.com/aci/">
+<div class="filtersidebar">
+<div class="lnksearchfilters">
+<a href="#" onclick="javascript:toggleFilters(this); return false;"><span>FILTROS</span></a>
+<div id="jurisprudenciaresults_filters" class="searchfilters">
+<ul>
+<li class="checkfilters">
+<div class="checkfiltersButton">
+<button class="btn btn-primary" href="#" onclick="javascript:toggleCheckfilters('jurisprudencia');">Filtrar</button>
+</div>
+</li>
+<li class="navfiltro" data-totalhits="85186" data-idtab="jurisprudencia" data-name="JURISDICCION">
+<a href="#" onclick="javascript:toggleFilter(this); return false;" data-idtab="jurisprudencia" data-database="AN">Jurisdicci&oacute;n <i class="pull-right fa fa-caret-down" aria-hidden="true"></i></a><button style="display:none;" onclick="javascript:removeCheckfilters('jurisprudencia', 'JURISDICCION', this); return false;" data-l10n-id="results.searchresults.filter.button.delfilter" type="button" class="btn btn-primary btn-sm pull-right delfilter">borrar filtro</button>
+<div id="navpfiltroJurisd" class="navpfiltro nicescroll" style="display:none;" tabindex="0"></div>
+</li>
+<li class="navfiltro" data-totalhits="85186" data-idtab="jurisprudencia" data-name="SUBTIPORESOLUCION">
+<a href="#" onclick="javascript:toggleFilter(this); return false;" data-idtab="jurisprudencia" data-database="AN">Resoluci&oacute;n <i class="pull-right fa fa-caret-down" aria-hidden="true"></i></a><button style="display:none;" onclick="javascript:removeCheckfilters('jurisprudencia', 'SUBTIPORESOLUCION', this); return false;" data-l10n-id="results.searchresults.filter.button.delfilter" type="button" class="btn btn-primary btn-sm pull-right delfilter">borrar filtro</button>
+<div id="navpfiltroResolucion" class="navpfiltro nicescroll" style="display:none;" tabindex="0"></div>
+</li>
+<li class="navfiltro" data-totalhits="85186" data-idtab="jurisprudencia" data-name="TIPOORGANOPUB">
+<a href="#" onclick="javascript:toggleFilter(this); return false;" data-idtab="jurisprudencia" data-database="AN">&Oacute;rgano <i class="pull-right fa fa-caret-down" aria-hidden="true"></i></a><button style="display:none;" id="removeOrg" onclick="javascript:removeCheckfilters('jurisprudencia', 'TIPOORGANOPUB', this); return false;" data-l10n-id="results.searchresults.filter.button.delfilter" type="button" class="btn btn-primary btn-sm pull-right delfilter">borrar filtro</button>
+<div id="navpfiltroOrgano" class="navpfiltro nicescroll" style="display:none;" tabindex="0"></div>
+</li>
+<li class="navfiltro" data-totalhits="85186" data-idtab="jurisprudencia" data-name="ANYO">
+<a href="#" onclick="javascript:toggleFilter(this); return false;" data-idtab="jurisprudencia" data-database="AN">A&ntilde;o <i class="pull-right fa fa-caret-down" aria-hidden="true"></i></a><button style="display:none;" onclick="javascript:removeCheckfilters('jurisprudencia', 'ANYO', this); return false;" data-l10n-id="results.searchresults.filter.button.delfilter" type="button" class="btn btn-primary btn-sm pull-right delfilter">borrar filtro</button>
+<div id="navpfiltroAnyo" class="navpfiltro nicescroll" style="display:none;" tabindex="0"></div>
+</li>
+<li class="navfiltro" data-totalhits="85186" data-idtab="jurisprudencia" data-name="PONENTE">
+<a href="#" onclick="javascript:toggleFilter(this); return false;" data-idtab="jurisprudencia" data-database="AN">Ponente <i class="pull-right fa fa-caret-down" aria-hidden="true"></i></a><button style="display:none;" onclick="javascript:removeCheckfilters('jurisprudencia', 'PONENTE', this); return false;" data-l10n-id="results.searchresults.filter.button.delfilter" type="button" class="btn btn-primary btn-sm pull-right delfilter">borrar filtro</button>
+<div id="navpfiltroPonente" class="navpfiltro nicescroll" style="display:none;" tabindex="0"></div>
+</li>
+<li class="checkfilters">
+<div class="checkfiltersButton">
+<button class="btn btn-primary" href="#" onclick="javascript:toggleCheckfilters('jurisprudencia');">Filtrar</button>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<div class="text-center botonera">
+<a href="#" class="btn btn-default newalert"><img src="/search/img/envbell.png" alt=""> Crear alerta</a>
+</div>
+</div>
+</aside><div class="resultswrapper">
+<div class="toppagination row">
+<form id="frmFilterjurisprudencia" name="frmFilterjurisprudencia" action="#" class="searchform" onsubmit="goToPage('jurisprudencia',$(this).find('.slectnavgoto input').val());">
+<input type="hidden" name="total" id="frmFilterjurisprudencia_total" value="200"><input type="hidden" name="records" id="frmFilterjurisprudencia_records" value="10"><input type="hidden" name="page" id="frmFilterjurisprudencia_page" value="20">
+<div class="col-md-5 numhits hidden-xs">
+<b>85186 resultados</b><span class="limitresults tooltips" title="Solamente se muestran hasta 200 resultados, utilice los filtros para acotar la consulta"> (<i class="fa fa-exclamation-circle" aria-hidden="true"></i> m&aacute;ximo documentos a recuperar 200)</span>
+</div>
+<div class="col-xs-12 col-md-7 sort">
+<div class="pull-right col-xs-12 nopad">
+<div id="jurisprudenciaresults_toppagination" class="pull-right searchpagination top nopad"></div>
+<div class="pull-right sortfield hidden-xs">
+<label for="frmFilterjurisprudencia_cbosort" class="oculta">Ordenar:</label><select id="frmFilterjurisprudencia_cbosort" name="cbosort" onchange="javascript:ordenar('jurisprudencia', true);" class="selectpicker form-control pull-left"><option value="Relevance" data-l10n-id="results.pagination.sort.coincidencia">
+												Coincidencia
+											</option><option value="IN_FECHARESOLUCION:increasing" data-l10n-id="results.pagination.sort.fecha.resol.asc">
+												Fecha Resol. [0..9]
+											</option><option value="IN_FECHARESOLUCION:decreasing" data-l10n-id="results.pagination.sort.fecha.resol.desc" selected="true">
+												Fecha Resol. [9..0]
+											</option><option value="IN_FECHAENTRADA:numberdecreasing">
+												Lo m&aacute;s nuevo
+											</option><option value="IP_TIPOORGANO:alphabetical" data-l10n-id="results.pagination.sort.organo.asc">
+												Organo [a..z]
+											</option><option value="IP_TIPOORGANO:reversealphabetical" data-l10n-id="results.pagination.sort.organo.desc">
+												Organo [z..a]
+											</option></select>
+</div>
+<div class="pull-right hidden-xs">
+<label for="frmFilterjurisprudencia_cboresults" class="hidden-xs cboresults">Ver</label>
+<div class="recordsperpagefield ">
+<select id="frmFilterjurisprudencia_cboresults" onchange="javascript:ordenar('jurisprudencia', true);" class="selectpicker form-control"><option value="10" selected="true">10</option><option value="20">20</option><option value="30">30</option><option value="50">50</option></select>
+</div>
+</div>
+</div>
+</div>
+</form>
+</div>
+<div id="jurisprudenciaresults_searchresults" class="row searchresults">
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11923807" data-ref="11923807" data-db="AN" data-fechares="20261110" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/335f14ab18582b15a0a8778d75e36f0d/20261113" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11923807" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-start="191" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/335f14ab18582b15a0a8778d75e36f0d/20261113" id="ref-11923807" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11923807" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-roj="SAP VI 1532/2026" data-fechares="20261110" data-alertdoc="" data-start="191" data-lang="1" data-langiso="es">SAP ALAVA, a 10 de noviembre de 2026 - ROJ: SAP VI 1532/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:APVI:2026:1532</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>195/2026</b>
+</li>
+<li>Municipio: <b>Vitoria-Gasteiz</b>
+</li>
+<li>Ponente: <b>BEATRIZ EVA ROMAN GOBERNADO</b>
+</li>
+<li>N&ordm; Recurso: <b>102/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-1">
+                                   Resumen Autom&aacute;tico: <b>a la redacción de preguntas y que, precisamente por estar sometido a una estricta obligación de confidencialidad, no existía riesgo alguno de interferencia en el proceso selectivo. Añadió que distinta sería la situación de quien forma parte de un tribunal encargado de valorar casos prácticos, examinar méritos o asignar puntuaciones, ámbito en el que, por muy aséptico que uno pretenda ser, no puede descartarse la influencia, siquiera inconsciente, derivada de un vínculo familiar con alguno de los aspirantes. Afirmó igualmente haber puesto dicha circunstancia en conocimiento de la persona que contactó con él para ofrecerle la colaboración en la elaboración del examen; afirmación plausible que sin embargo, carece de corroboración probatoria. Sea como fuere, <font color=red>huelga</font> decir que el desconocimiento de la ley no exime de su cumplimiento. Ahora bien, tampoco</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-1" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-1" data-placement="bottom" data-pos="1">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-1" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/335f14ab18582b15a0a8778d75e36f0d/20261113" data-title="ROJ: SAP VI 1532/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/335f14ab18582b15a0a8778d75e36f0d/20261113" data-title="ROJ: SAP VI 1532/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/335f14ab18582b15a0a8778d75e36f0d/20261113"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11924789" data-ref="11924789" data-db="AN" data-fechares="20261109" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/25ab99d9f3607a7aa0a8778d75e36f0d/20261113" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11924789" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-start="192" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/25ab99d9f3607a7aa0a8778d75e36f0d/20261113" id="ref-11924789" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11924789" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-roj="STSJ CANT 1152/2026" data-fechares="20261109" data-alertdoc="" data-start="192" data-lang="1" data-langiso="es">STSJ Cantabria, a 09 de noviembre de 2026 - ROJ: STSJ CANT 1152/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJCANT:2026:1152</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>741/2026</b>
+</li>
+<li>Municipio: <b>Santander</b>
+</li>
+<li>Ponente: <b>MARIA JESUS FERNANDEZ GARCIA</b>
+</li>
+<li>N&ordm; Recurso: <b>521/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-2">
+                                   Resumen Autom&aacute;tico: <b>En IT (agota 545 d) por fallos mnésicos que le dificultan el desempeño de su trabajo desde hace 1-2 años, coincidiendo con empeoramiento depresivo. Visitado por los siguientes especialistas: Doc. del visor del SCS: 15/12/2022 17:36 - CPSQ (PSIQUIATRIA CONSULTAS) - Motivo de Consulta: Síntomas depresivos. Antecedentes personales: Psc/Psq: Refiere asistencia psiquiátrica desde la infancia no sabiendo especificar qué tipo de problemas mentales presentaba. Afirma haber estado en tto desde entonces. Comenta cuadro depresivo hace más de 20 años por problemas laborales y separación de su mujer comentando intento autolítico por sobreingesta medicamentosa con atención en urgencias e ingreso hospitalario en planta de psiquiatría declarándose en <font color=red>huelga</font> de hambre. SB: Vive sólo. Refiere tener pareja sin convivencia estable. Separado de su anterior pareja. Una hija</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-2" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-2" data-placement="bottom" data-pos="2">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-2" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/25ab99d9f3607a7aa0a8778d75e36f0d/20261113" data-title="ROJ: STSJ CANT 1152/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/25ab99d9f3607a7aa0a8778d75e36f0d/20261113" data-title="ROJ: STSJ CANT 1152/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/25ab99d9f3607a7aa0a8778d75e36f0d/20261113"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11925265" data-ref="11925265" data-db="AN" data-fechares="20261106" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/c63fae4649065999a0a8778d75e36f0d/20261113" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11925265" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-start="193" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/c63fae4649065999a0a8778d75e36f0d/20261113" id="ref-11925265" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11925265" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-roj="STSJ AR 1632/2026" data-fechares="20261106" data-alertdoc="" data-start="193" data-lang="1" data-langiso="es">STSJ Arag&oacute;n, a 06 de noviembre de 2026 - ROJ: STSJ AR 1632/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJAR:2026:1632</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>363/2026</b>
+</li>
+<li>Municipio: <b>Zaragoza</b>
+</li>
+<li>Ponente: <b>JAVIER ALBAR GARCIA</b>
+</li>
+<li>N&ordm; Recurso: <b>300/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-3">
+                                   Resumen Autom&aacute;tico: <b>el derecho de <font color=red>huelga</font>. Es decir, que el derecho de <font color=red>huelga</font> en abstracto habría sido objeto de tal perturbación. El que la administración, en el ejercicio de su deber de garantía de otros derechos fundamentales haya podido tomar decisiones desproporcionadas en algún aspecto, como ha sido el caso, no supone de por sí violentar tal derecho, pues la parte ha podido promover la <font color=red>huelga</font>, y ha podido recurrir los decretos sobre servicios mínimos, habiéndosele dado traslado para informe. La libertad sindical, en su vertiente de promoción del ejercicio concreto del derecho a la <font color=red>huelga</font> por parte de los trabajadores, se ha podido desarrollar sin mayor inconveniente. Para poder afirmarse eso, habría sido necesaria bien una actividad de interposición de trabas indebidas, bien un abuso masivo y manifiesto del derecho/deber de fijar los servicios mínimos, o bien una mala fe en la fijación de los</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-3" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-3" data-placement="bottom" data-pos="3">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-3" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/c63fae4649065999a0a8778d75e36f0d/20261113" data-title="ROJ: STSJ AR 1632/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/c63fae4649065999a0a8778d75e36f0d/20261113" data-title="ROJ: STSJ AR 1632/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/c63fae4649065999a0a8778d75e36f0d/20261113"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11919157" data-ref="11919157" data-db="AN" data-fechares="20261104" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/097a3e74f0b010faa0a8778d75e36f0d/20261110" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11919157" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-start="194" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/097a3e74f0b010faa0a8778d75e36f0d/20261110" id="ref-11919157" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11919157" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-roj="STSJ CAT 8801/2026" data-fechares="20261104" data-alertdoc="" data-start="194" data-lang="1" data-langiso="es">STSJ Catalu&ntilde;a, a 04 de noviembre de 2026 - ROJ: STSJ CAT 8801/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJCAT:2026:8801</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>908/2026</b>
+</li>
+<li>Municipio: <b>Barcelona</b>
+</li>
+<li>Ponente: <b>JOSE MARIA GOMEZ UDIAS</b>
+</li>
+<li>N&ordm; Recurso: <b>1047/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-4">
+                                   Resumen Autom&aacute;tico: <b>que por amparar el derecho a la efectiva tutela judicial, se vulneraría otro derecho, también fundamental y recogido en el propio artículo 24 de la Constitución, cual es el derecho al proceso con las garantías debidas de contradicción y prueba, porque el incidente de suspensión no es trámite idóneo para decidir la cuestión objeto del pleito ( AATS 22 de noviembre de 1993 y 7 de noviembre de 1995 y STS de 14 de enero de 1997, entro otros)". 26. Como ejemplo de supuesto legalmente previsto, <font color=red>huelga</font> decir que el art. 136.1 de la LJCA invoca expresamente el fumus boni iuris en los supuestos en que la actividad impugnada constituye inactividad o vía de hecho, de la siguiente forma: "En los supuestos de los artículos 29 y 30, la medida cautelar se adoptará salvo que se aprecie con evidencia que no se dan las situaciones previstas en dichos artículos</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-4" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-4" data-placement="bottom" data-pos="4">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-4" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/097a3e74f0b010faa0a8778d75e36f0d/20261110" data-title="ROJ: STSJ CAT 8801/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/097a3e74f0b010faa0a8778d75e36f0d/20261110" data-title="ROJ: STSJ CAT 8801/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/097a3e74f0b010faa0a8778d75e36f0d/20261110"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11919156" data-ref="11919156" data-db="AN" data-fechares="20261104" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/be4519e92531bc47a0a8778d75e36f0d/20261110" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11919156" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-start="195" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/be4519e92531bc47a0a8778d75e36f0d/20261110" id="ref-11919156" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11919156" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-roj="STSJ CAT 8790/2026" data-fechares="20261104" data-alertdoc="" data-start="195" data-lang="1" data-langiso="es">STSJ Catalu&ntilde;a, a 04 de noviembre de 2026 - ROJ: STSJ CAT 8790/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJCAT:2026:8790</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>907/2026</b>
+</li>
+<li>Municipio: <b>Barcelona</b>
+</li>
+<li>Ponente: <b>JOSE MARIA GOMEZ UDIAS</b>
+</li>
+<li>N&ordm; Recurso: <b>506/2025</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-5">
+                                   Resumen Autom&aacute;tico: <b>ii) en la salvaguardia de los intereses generales del Estado y de las Administraciones Públicas. 77. Y, en negativo, el contrato de servicios regulado por la LCSP, en consonancia con lo anterior, refiere en el art. 17 párrafo 2º, que no puede ser objeto de este contrato aquellos servicios que impliquen ejercicio de la autoridad inherente a los poderes públicos. 78. Como complemento del art. 17 párrafo 2º de la LCSP, <font color=red>huelga</font> decir, que el ejercicio de autoridad no puede ser objeto del contrato de servicios pues es una competencia exclusiva de los funcionarios de carrera, conforme los arts. 92.3 de la LBRL y, 9.2 del EBEP. 79. Teniendo en cuenta lo anterior, es relevante que sobre la posibilidad de que la Administración externalice competencias la Sala III del Tribunal Supremo ha introducido una serie de matices relevantes para comprender</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-5" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-5" data-placement="bottom" data-pos="5">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-5" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/be4519e92531bc47a0a8778d75e36f0d/20261110" data-title="ROJ: STSJ CAT 8790/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/be4519e92531bc47a0a8778d75e36f0d/20261110" data-title="ROJ: STSJ CAT 8790/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/be4519e92531bc47a0a8778d75e36f0d/20261110"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11919164" data-ref="11919164" data-db="AN" data-fechares="20261104" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/1af1791883596259a0a8778d75e36f0d/20261110" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11919164" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-start="196" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/1af1791883596259a0a8778d75e36f0d/20261110" id="ref-11919164" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11919164" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-roj="STSJ CAT 8853/2026" data-fechares="20261104" data-alertdoc="" data-start="196" data-lang="1" data-langiso="es">STSJ Catalu&ntilde;a, a 04 de noviembre de 2026 - ROJ: STSJ CAT 8853/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJCAT:2026:8853</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>913/2026</b>
+</li>
+<li>Municipio: <b>Barcelona</b>
+</li>
+<li>Ponente: <b>JOSE MARIA GOMEZ UDIAS</b>
+</li>
+<li>N&ordm; Recurso: <b>364/2024</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-6">
+                                   Resumen Autom&aacute;tico: <b>de la Sala III del Tribunal Supremo introduce una serie de matices que se deben valorar en cada caso concreto, para concluir si la apertura de un segundo procedimiento incurre en infracción del ordenamiento jurídico apta para producir la anulabilidad del segundo procedimiento. 109. Así, no es lo mismo iniciar un segundo procedimiento administrativo sancionador que un procedimiento que no tuviere este carácter. Esta distinción proviene de que el procedimiento sancionador el ciudadano tiene reconocidos los derechos previstos en el art. 24.2 de la Constitución Española. 110. Ulteriormente se distinguen los supuestos en que la Administración dicta el acto administrativo que tiene por objeto declarar la caducidad formal de aquellos que no lo hace. <font color=red>Huelga</font> decir, a través del acto administrativo con el que se declara la caducidad formal del procedimiento se puede rehusar</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-6" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-6" data-placement="bottom" data-pos="6">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-6" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/1af1791883596259a0a8778d75e36f0d/20261110" data-title="ROJ: STSJ CAT 8853/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/1af1791883596259a0a8778d75e36f0d/20261110" data-title="ROJ: STSJ CAT 8853/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/1af1791883596259a0a8778d75e36f0d/20261110"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11920514" data-ref="11920514" data-db="AN" data-fechares="20261103" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/dc41a060e3db3e7fa0a8778d75e36f0d/20261110" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11920514" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-start="197" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/dc41a060e3db3e7fa0a8778d75e36f0d/20261110" id="ref-11920514" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11920514" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-roj="STSJ PV 3631/2026" data-fechares="20261103" data-alertdoc="" data-start="197" data-lang="1" data-langiso="es">STSJ Pa&iacute;s Vasco, a 03 de noviembre de 2026 - ROJ: STSJ PV 3631/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJPV:2026:3631</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>2479/2026</b>
+</li>
+<li>Municipio: <b>Bilbao</b>
+</li>
+<li>Ponente: <b>MAITE ALEJANDRO ARANZAMENDI</b>
+</li>
+<li>N&ordm; Recurso: <b>1460/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-7">
+                                   Resumen Autom&aacute;tico: <b>en su procedimiento sobre modificación sustancial de condiciones de trabajo, que declaró nula la comunicada a la actora el 26 de noviembre de 2021, con vulneración de derechos fundamentales de tutela judicial efectiva y <font color=red>huelga</font>, condenando a la empresa TUBACEX TUBOS INOXIDABLES SAU a la reposición de la trabajadora en sus anteriores condiciones de trabajo y al abono de 7500 € en concepto de daños morales. Los referidos autos nos informan de que el juzgado de lo Social número tres de Vitoria-Gasteiz dictó sentencia el 26 de septiembre de 2022 en la que declaró la nulidad de la decisión de modificación sustancial de condiciones de trabajo comunicada por la referida empresa a la actora el 26 de noviembre de 2021 con vulneración de los derechos fundamentales de tutela, judicial, efectiva y <font color=red>huelga</font>, condenando a la reposición en condiciones de trabajo anteriores y abono</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-7" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-7" data-placement="bottom" data-pos="7">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-7" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/dc41a060e3db3e7fa0a8778d75e36f0d/20261110" data-title="ROJ: STSJ PV 3631/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/dc41a060e3db3e7fa0a8778d75e36f0d/20261110" data-title="ROJ: STSJ PV 3631/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/dc41a060e3db3e7fa0a8778d75e36f0d/20261110"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11920520" data-ref="11920520" data-db="AN" data-fechares="20261103" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/3847c89ebbe59f74a0a8778d75e36f0d/20261110" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11920520" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-start="198" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/3847c89ebbe59f74a0a8778d75e36f0d/20261110" id="ref-11920520" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11920520" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261110" data-roj="STSJ PV 3648/2026" data-fechares="20261103" data-alertdoc="" data-start="198" data-lang="1" data-langiso="es">STSJ Pa&iacute;s Vasco, a 03 de noviembre de 2026 - ROJ: STSJ PV 3648/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJPV:2026:3648</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>2498/2026</b>
+</li>
+<li>Municipio: <b>Bilbao</b>
+</li>
+<li>Ponente: <b>GARBI&Ntilde;E BIURRUN MANCISIDOR</b>
+</li>
+<li>N&ordm; Recurso: <b>2205/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-8">
+                                   Resumen Autom&aacute;tico: <b>válidos los argumentos indicados para rechazar la vulneración de la garantía de indemnidad, toda vez que el proceso selectivo para la cobertura de dichas plazas y , al amparo de la Ley 20/2021, se convocó en mayo de 2022 y que, por tanto, no guardaba relación alguna con la situación de IT de la actora, lo que es extensible a la propia resolución de aquel proceso selectivo y a su adjudicación a quien obtuvo la plaza, lo que se produjo en el momento correspondiente, momento ajeno y sin vinculación con la situación de IT de la demandante, pues respondió al desarrollo normal y reglamentario de aquel proceso. e.- SOBRE LA PRETENSIÓN SUBSIDIARIA DE DECLARACIÓN DE IMPROCEDENCIA DEL DESPIDO IMPUGNADO. Motivo que también desestimamos, con base en los ya reiterados argumentos y conclusiones, que <font color=red>huelga</font> repetir ahora, según</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-8" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-8" data-placement="bottom" data-pos="8">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-8" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/3847c89ebbe59f74a0a8778d75e36f0d/20261110" data-title="ROJ: STSJ PV 3648/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/3847c89ebbe59f74a0a8778d75e36f0d/20261110" data-title="ROJ: STSJ PV 3648/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/3847c89ebbe59f74a0a8778d75e36f0d/20261110"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11923706" data-ref="11923706" data-db="AN" data-fechares="20261030" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/c10835dab72bdf03a0a8778d75e36f0d/20261112" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11923706" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261112" data-start="199" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/c10835dab72bdf03a0a8778d75e36f0d/20261112" id="ref-11923706" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11923706" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261112" data-roj="STSJ AR 1613/2026" data-fechares="20261030" data-alertdoc="" data-start="199" data-lang="1" data-langiso="es">STSJ Arag&oacute;n, a 30 de octubre de 2026 - ROJ: STSJ AR 1613/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:TSJAR:2026:1613</b>
+</li>
+<li>N&ordm; de Resoluci&oacute;n: <b>527/2026</b>
+</li>
+<li>Municipio: <b>Zaragoza</b>
+</li>
+<li>Ponente: <b>MARIA PILAR GALINDO MORELL</b>
+</li>
+<li>N&ordm; Recurso: <b>324/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-9">
+                                   Resumen Autom&aacute;tico: <b>constituye un servicio esencial y la necesidad de garantizar determinados servicios durante la jornada de <font color=red>huelga</font>, sin exteriorizar razonamiento alguno, y sin identificar qué concretos derechos fundamentales o bienes constitucionales resultarían afectados de forma grave e irreparable por el ejercicio de la <font color=red>huelga</font> convocada. TERCERO. -En el presente contexto y para abordar la cuestión enjuiciada, debemos partir de lo dispuesto en el artículo 28.2 CE que dispone: «Se reconoce el derecho a la <font color=red>huelga</font> de los trabajadores para la defensa de sus intereses. La ley que regule el ejercicio de este derecho establecerá las garantías precisas para asegurar el mantenimiento de los servicios esenciales de la comunidad». La jurisprudencia constitucional sobre la motivación y proporcionalidad de los servicios mínimos en el ejercicio del derecho de <font color=red>huelga</font> ( art.</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-9" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-9" data-placement="bottom" data-pos="9">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-9" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/c10835dab72bdf03a0a8778d75e36f0d/20261112" data-title="ROJ: STSJ AR 1613/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/c10835dab72bdf03a0a8778d75e36f0d/20261112" data-title="ROJ: STSJ AR 1613/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/c10835dab72bdf03a0a8778d75e36f0d/20261112"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="row searchresult doc" id="jurisprudenciaresults_content-11924259" data-ref="11924259" data-db="AN" data-fechares="20261030" data-alertdoc="">
+<div class="col-xs-12 col-sm-12 content">
+<div class="title">
+<a href="#" data-link="https://www.poderjudicial.es/search/AN/openDocument/de7f0497f837fa46a0a8778d75e36f0d/20261113" onclick="markOpenedDoc($(this));openDocumentNewWindow(this);return false;" class="tooltips new-button hidden-xs" title="Abrir el documento en nueva ventana" data-placement="top" aria-label="Icono Abrir el documento en nueva ventana" data-databasematch="AN" data-reference="11924259" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-start="200" data-lang="1"><i class="fa fa-external-link" aria-hidden="true"></i></a><span class="separator hidden-xs">&nbsp;</span><a href="https://www.poderjudicial.es/search/AN/openDocument/de7f0497f837fa46a0a8778d75e36f0d/20261113" id="ref-11924259" onclick="markOpenedDoc($(this));openDocumentFromHref(this);return false;" data-databasematch="AN" data-reference="11924259" data-statsqueryid="334762058" data-links="huelga" data-optimize="20261113" data-roj="AAN 4902/2026" data-fechares="20261030" data-alertdoc="" data-start="200" data-lang="1" data-langiso="es">AAN, a 30 de octubre de 2026 - ROJ: AAN 4902/2026</a>
+</div>
+<div class="metadatos">
+<ul>
+<li>
+<b>ECLI:ES:AN:2026:4902A</b>
+</li>
+<li>Municipio: <b>Madrid</b>
+</li>
+<li>Ponente: <b>ANA SANCHO ARANZASTI</b>
+</li>
+<li>N&ordm; Recurso: <b>346/2026</b>
+</li>
+</ul>
+</div>
+<div class="summary" id="jur-summary-10">
+                                   Resumen Autom&aacute;tico: <b>de recurso, la Sala no entra a valorar el fondo del asunto. No es posible, como así se pretende, desligar la resolución de la medida cautelar de los hechos acontecidos antes y después de la convocatoria de <font color=red>huelga</font>, ni acoger únicamente como también se pretende, aquéllos hechos que a juicio del recurrente y en interés propio, motivarían la adopción de la medida cautelar. 4.El auto únicamente valora los hechos a efectos de la determinación de los requisitos de la medida cautelar; no fija la prevalencia del derecho de negociación colectiva sobre la <font color=red>huelga</font>, ni de la <font color=red>huelga</font> sobre la negociación colectiva, ni examina la controversia de fondo, como se indica en el recurso. Muy al contrario, el auto determina que no concurren los presupuestos fijados en el art. 180.2 LRJS; examina la hipotética colisión del derecho de negociación colectiva y de <font color=red>huelga</font> desde un punto de</b>
+</div>
+</div>
+<div class="">
+<div class="info pull-right">
+<ul></ul>
+</div>
+</div>
+<div class="col-xs-12 actions">
+<div class="pull-left docactions">
+<ul>
+<li id="jur-leglink-10" class="hidden-xs hidden legislacion" data-toggle="popover" data-a="jur-legdiv-10" data-placement="bottom" data-pos="10">
+<a href="#" onclick="return false;" class="tooltips" title="Legislaci&oacute;n relacionada" data-placement="top">
+								Legislaci&oacute;n <i class="fa fa-angle-down" aria-hidden="true"></i></a>
+</li>
+</ul>
+<div id="jur-legdiv-10" class="showLegRel hidden popover-content"></div>
+</div>
+<div class="pull-right docactions">
+<ul>
+<li class="social tooltips" title="compartir en Facebook" data-placement="bottom">
+<a href="#" class="fb-button" aria-label="Icono compartir en Facebook" data-href="https://www.poderjudicial.es/search/AN/openDocument/de7f0497f837fa46a0a8778d75e36f0d/20261113" data-title="ROJ: AAN 4902/2026"><i class="fa fa-facebook-square" aria-hidden="true"></i></a>
+</li>
+<li class="social tooltips twitter" title="compartir en Twitter" data-placement="bottom">
+<a href="#" class="twtr-button" aria-label="Icono compartir en Twitter. Pulse para compartir en Twitter" data-href="https://www.poderjudicial.es/search/AN/openDocument/de7f0497f837fa46a0a8778d75e36f0d/20261113" data-title="ROJ: AAN 4902/2026">
+<svg class="social_twitter" viewBox="0 0 26 26" aria-hidden="true">
+<g>
+<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+</g>
+</svg>
+</a>
+</li>
+<li class="social tooltips" title="copiar enlace" data-placement="bottom">
+<a href="#" class="cp-button" aria-label="Icono copiar enlace al portapapeles" data-clipboard-text="https://www.poderjudicial.es/search/AN/openDocument/de7f0497f837fa46a0a8778d75e36f0d/20261113"><i class="fa fa-clipboard" aria-hidden="true"></i></a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="bottompagination row">
+<form id="bottomfrmFilterjurisprudencia" name="frmFilterjurisprudencia" action="#" class="searchform" onsubmit="goToPage('jurisprudencia',$(this).find('.slectnavgoto input').val());">
+<div id="jurisprudenciaresults_bottompagination" class="pull-right searchpagination searchform bottom"></div>
+</form>
+</div>
+</div>
