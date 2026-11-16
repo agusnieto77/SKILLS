@@ -559,14 +559,14 @@ class TestPipRelleno(unittest.TestCase):
 
     def test_planificar_grilla_rechaza_celda_inexistente_o_ambigua(self):
         mapa = [{"indice": 0, "etiqueta": "Equipamiento (1)", "rubro": "1", "anio": "2026"}]
-        with self.assertRaises(Exception):
+        with self.assertRaises(PIP.ErrorPip):
             PIP.planificar_grilla(mapa, {"9": {"2026": "1,00"}})
-        with self.assertRaises(Exception):
+        with self.assertRaises(PIP.ErrorPip):
             PIP.planificar_grilla(
                 [{"indice": 0, "etiqueta": "Equipamiento (1)", "rubro": "1", "anio": "2026"},
                  {"indice": 1, "etiqueta": "Otro (1)", "rubro": "1", "anio": "2027"}],
                 {"1": {"2026": "1,00"}})
-        with self.assertRaises(Exception):
+        with self.assertRaises(PIP.ErrorPip):
             PIP.planificar_grilla([], {"1": {"2026": "1,00"}})
 
     def test_planificar_grilla_acepta_codigo_distinto_del_numero_visible(self):

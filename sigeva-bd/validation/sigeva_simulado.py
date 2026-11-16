@@ -649,7 +649,7 @@ def crear_manejador(estado: Estado):
                 estado.completar_seccion("Aspectos éticos", {k: f.get(k, []) for k in f if k != "btnSubmit"})
                 return self._redirigir("/eva/index.do?tramiteid=7")
             if ruta == "/eva/solicitudRecusacion.do" and boton == "Guardar":
-                filas = [list(t) for t in zip(f.get("apellido", []), f.get("nombre", []), f.get("observacion", []))
+                filas = [list(t) for t in zip(f.get("apellido", []), f.get("nombre", []), f.get("observacion", []), strict=False)
                          if any(x.strip() for x in t)]
                 if not filas:
                     # Como el sitio real: el Guardar vacío no marca "Ok".
